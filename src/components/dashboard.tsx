@@ -79,6 +79,7 @@ export function Dashboard() {
   const [loadingQs, setLoadingQs] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   useEffect(() => {
     void supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ""));
@@ -276,7 +277,10 @@ export function Dashboard() {
                 Persistent and separate from the temporary room data. Organize questions into Sets.
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setGuideOpen(true)}>
+                <BookOpen className="size-4 text-blue-500" /> AI Prompt Guide
+              </Button>
               <Button variant="outline" onClick={() => setImportOpen(true)}>
                 <Zap className="size-4 text-[var(--ember)]" /> Import JSON Set
               </Button>
@@ -357,7 +361,127 @@ export function Dashboard() {
           void loadBank();
         }}
       />
+
+      <AiPromptGuideModal
+        open={guideOpen}
+        onOpenChange={setGuideOpen}
+        onOpenImport={() => {
+          setGuideOpen(false);
+          setImportOpen(true);
+        }}
+      />
     </div>
+  );
+}
+
+function AiPromptGuideModal({
+  open,
+  onOpenChange,
+  onOpenImport,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onOpenImport: () => void;
+}) {
+  const fullAiPrompt = `You are a physics teacher's assistant. Generate a high-quality JSON array of physics classroom questions formatted for the Rain of Physics platform.
+
+Strict Rules:
+1. Output ONLY a valid JSON array of question objects (no markdown, no extra commentary).
+2. "type" MUST be one of: "mcq", "true_false", "prediction", "numerical", "find_error", "exit_ticket".
+3. For "mcq", "prediction", "find_error", "exit_ticket":
+   - "options": array of 2 to 4 string choices.
+   - "correct_answer": array with 0-indexed position of correct choice, e.g. [0] or [1].
+4. For "true_false":
+   - "options": ["True", "False"]
+   - "correct_answer": [0] for True or [1] for False.
+5. For "numerical":
+   - "options": []
+   - "correct_answer": ["<value>", "<tolerance>"], e.g. ["9.8", "0.1"].
+6. "difficulty": "Easy", "Medium", "Hard", or "Boss".
+7. "timer_seconds": integer between 10 and 90 (e.g., 30).
+8. "explanation": short educational explanation why the answer is correct.
+
+Example Format:
+[
+  {
+    "prompt": "A object moves at constant velocity. What is its acceleration?",
+    "type": "mcq",
+    "options": ["Zero", "9.8 m/s²", "Increasing", "Depends on mass"],
+    "correct_answer": [0],
+    "explanation": "Constant velocity means zero rate of change of velocity, hence zero acceleration.",
+    "timer_seconds": 30,
+    "difficulty": "Easy"
+  },
+  {
+    "prompt": "Calculate the force needed to accelerate a 5kg mass at 2 m/s².",
+    "type": "numerical",
+    "options": [],
+    "correct_answer": ["10", "0"],
+    "explanation": "F = m * a = 5 * 2 = 10 N.",
+    "timer_seconds": 45,
+    "difficulty": "Medium"
+  }
+]
+
+Please generate 5 questions about [INSERT TOPIC HERE].`;
+
+  const copyGuidePrompt = () => {
+    void navigator.clipboard.writeText(fullAiPrompt);
+    toast.success("AI Prompt Guide copied to clipboard!");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="font-display text-xl font-extrabold flex items-center gap-2">
+            <BookOpen className="size-5 text-blue-500" /> AI Question Generator Guide (ChatGPT / Gemini)
+          </DialogTitle>
+          <DialogDescription>
+            Use this master prompt guide to instruct ChatGPT, Gemini, or Claude to generate compatible Question Sets with zero syntax or formatting errors.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4">
+          <div className="rounded-xl border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 p-4 text-xs space-y-2">
+            <p className="font-bold text-blue-900 dark:text-blue-300">Supported Question Types:</p>
+            <ul className="list-disc pl-4 space-y-1 text-muted-foreground">
+              <li><strong className="text-foreground">mcq</strong>: Multiple Choice Question (2–4 options, index in <code className="bg-muted px-1 rounded">correct_answer</code>).</li>
+              <li><strong className="text-foreground">true_false</strong>: True/False (<code className="bg-muted px-1 rounded">[0]</code> for True, <code className="bg-muted px-1 rounded">[1]</code> for False).</li>
+              <li><strong className="text-foreground">numerical</strong>: Numeric answer (<code className="bg-muted px-1 rounded">{`["value", "tolerance"]`}</code>, e.g. <code className="bg-muted px-1 rounded">{`["9.8", "0.1"]`}</code>).</li>
+              <li><strong className="text-foreground">prediction</strong> / <strong className="text-foreground">find_error</strong> / <strong className="text-foreground">exit_ticket</strong>: Specialized conceptual activities.</li>
+            </ul>
+          </div>
+
+          <div className="grid gap-2">
+            <div className="flex items-center justify-between">
+              <Label className="font-bold">Full AI Master Prompt</Label>
+              <Button size="xs" variant="outline" onClick={copyGuidePrompt}>
+                Copy Full Prompt
+              </Button>
+            </div>
+            <textarea
+              readOnly
+              rows={12}
+              className="w-full rounded-md border border-border bg-muted/60 p-3 font-mono text-[11px] text-muted-foreground focus:outline-none"
+              value={fullAiPrompt}
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+          <Button onClick={copyGuidePrompt}>
+            Copy Prompt &amp; Go to ChatGPT
+          </Button>
+          <Button onClick={onOpenImport} className="bg-[var(--ember)] text-white hover:bg-[var(--ember)]/90">
+            Open Importer
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -562,7 +686,7 @@ function QuestionBuilder({
         explanation: explanation.trim() || null,
         timer_seconds: timer,
         difficulty,
-        topic_id: topicId || null,
+        topic_id: topicId && topicId !== "none" ? topicId : null,
       });
       if (error) throw new Error(error.message);
       toast.success("Saved to your bank");
