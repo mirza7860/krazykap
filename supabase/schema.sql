@@ -1013,7 +1013,7 @@ begin
                'score', score
              ) as x
       from (
-        select p_sub.*, p_sub.joined_at from scored p_sub
+        select p_sub.* from scored p_sub
       ) s
       order by score desc, xp desc, correct_count desc, coalesce(avg_speed, 999999) asc, joined_at asc, id asc
       limit $3
