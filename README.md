@@ -26,7 +26,7 @@ will 404 until they exist.
 
 `.env.local` already holds:
 
-```
+```   
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
 ```
