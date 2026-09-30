@@ -49,6 +49,7 @@ interface QuestionRow {
   explanation: string | null;
   timer_seconds: number;
   topic_id: string | null;
+  set_name: string | null;
 }
 
 interface TopicRow {
@@ -77,6 +78,7 @@ export function Dashboard() {
   const [pastRooms, setPastRooms] = useState<PastRoomRow[]>([]);
   const [loadingQs, setLoadingQs] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     void supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ""));
@@ -88,7 +90,7 @@ export function Dashboard() {
     const [q, t, r] = await Promise.all([
       supabase
         .from("questions")
-        .select("id,prompt,type,difficulty,options,correct_answer,explanation,timer_seconds,topic_id")
+        .select("id,prompt,type,difficulty,options,correct_answer,explanation,timer_seconds,topic_id,set_name")
         .order("created_at", { ascending: false })
         .limit(50),
       supabase.from("topics").select("id,name").order("name"),
@@ -271,12 +273,17 @@ export function Dashboard() {
                 <BookOpen className="size-5 text-[var(--primary)]" /> Question bank
               </h2>
               <p className="text-sm text-muted-foreground">
-                Persistent and separate from the temporary room data.
+                Persistent and separate from the temporary room data. Organize questions into Sets.
               </p>
             </div>
-            <Button onClick={() => setBuilderOpen(true)}>
-              <Plus className="size-4" /> New question
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Zap className="size-4 text-[var(--ember)]" /> Import JSON Set
+              </Button>
+              <Button onClick={() => setBuilderOpen(true)}>
+                <Plus className="size-4" /> New question
+              </Button>
+            </div>
           </div>
 
           {loadingQs ? (
@@ -305,6 +312,11 @@ export function Dashboard() {
                     <div className="min-w-0 flex-1">
                       <p className="font-medium break-words">{q.prompt}</p>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        {q.set_name && (
+                          <Badge className="bg-[var(--ember)]/15 text-[var(--primary)] border-[var(--ember)]/30 font-bold">
+                            Set: {q.set_name}
+                          </Badge>
+                        )}
                         <Badge variant="outline">{q.type.replace("_", " ")}</Badge>
                         <Badge variant="outline">{q.difficulty}</Badge>
                         <Badge variant="outline">
@@ -336,7 +348,154 @@ export function Dashboard() {
           void loadBank();
         }}
       />
+
+      <JsonImporter
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onSaved={() => {
+          setImportOpen(false);
+          void loadBank();
+        }}
+      />
     </div>
+  );
+}
+
+function JsonImporter({
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSaved: () => void;
+}) {
+  const [setName, setSetName] = useState("");
+  const [jsonText, setJsonText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const samplePrompt = `Prompt for ChatGPT / Gemini:
+"Generate a JSON array of 5 physics questions in this exact JSON format:
+[
+  {
+    "prompt": "What is Newton's First Law?",
+    "type": "mcq",
+    "options": ["Law of Inertia", "F=ma", "Action-Reaction", "Gravity"],
+    "correct_answer": [0],
+    "explanation": "Newton's 1st law is also known as the Law of Inertia.",
+    "timer_seconds": 30,
+    "difficulty": "Easy"
+  }
+]"`;
+
+  const copySamplePrompt = () => {
+    void navigator.clipboard.writeText(samplePrompt);
+    toast.success("Copied ChatGPT/Gemini prompt template!");
+  };
+
+  async function handleImport() {
+    if (!setName.trim()) return toast.error("Enter a Set Name (e.g., 'Kinematics Quiz 1')");
+    if (!jsonText.trim()) return toast.error("Paste JSON questions first");
+
+    let parsed: unknown[];
+    try {
+      const res = JSON.parse(jsonText.trim());
+      if (!Array.isArray(res)) {
+        throw new Error("JSON must be an array of question objects");
+      }
+      parsed = res;
+    } catch {
+      return toast.error("Invalid JSON format. Check syntax.");
+    }
+
+    setBusy(true);
+    try {
+      const rows = parsed.map((item) => {
+        const q = item as Record<string, unknown>;
+        return {
+          set_name: setName.trim(),
+          prompt: typeof q.prompt === "string" ? q.prompt : "Untitled Question",
+          type: typeof q.type === "string" ? q.type : "mcq",
+          options: Array.isArray(q.options) ? q.options : [],
+          correct_answer: Array.isArray(q.correct_answer) ? q.correct_answer : [0],
+          explanation: typeof q.explanation === "string" ? q.explanation : null,
+          timer_seconds: typeof q.timer_seconds === "number" ? q.timer_seconds : 30,
+          difficulty: typeof q.difficulty === "string" ? q.difficulty : "Medium",
+        };
+      });
+
+      const { error } = await supabase.from("questions").insert(rows);
+      if (error) throw new Error(error.message);
+
+      toast.success(`Imported ${rows.length} questions into Set "${setName.trim()}"!`);
+      setSetName("");
+      setJsonText("");
+      onSaved();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to import questions");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="font-display text-lg font-extrabold">
+            Bulk Import Question Set via AI (ChatGPT / Gemini)
+          </DialogTitle>
+          <DialogDescription>
+            Generate questions with AI using the prompt template below, then paste the JSON result to save them as a Question Set.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4">
+          <div className="rounded-xl border border-border bg-muted/50 p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-bold text-muted-foreground uppercase">AI Prompt Template</span>
+              <Button size="xs" variant="ghost" onClick={copySamplePrompt}>
+                Copy Prompt
+              </Button>
+            </div>
+            <pre className="text-[11px] font-mono text-muted-foreground whitespace-pre-wrap break-words">
+              {samplePrompt}
+            </pre>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="set-name">Question Set Name</Label>
+            <Input
+              id="set-name"
+              value={setName}
+              onChange={(e) => setSetName(e.target.value)}
+              placeholder="e.g. Mechanics Chapter 1"
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="json-paste">Paste JSON Output</Label>
+            <textarea
+              id="json-paste"
+              rows={8}
+              className="w-full rounded-md border border-border bg-card p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
+              value={jsonText}
+              onChange={(e) => setJsonText(e.target.value)}
+              placeholder='[{"prompt": "...", "type": "mcq", ...}]'
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => void handleImport()} disabled={busy}>
+            {busy && <Loader2 className="size-4 animate-spin" />} Import Set
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

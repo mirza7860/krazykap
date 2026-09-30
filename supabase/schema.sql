@@ -42,6 +42,7 @@ create table if not exists public.questions (
   id             uuid primary key default gen_random_uuid(),
   teacher_id     uuid not null references public.teachers (id) on delete cascade,
   topic_id       uuid references public.topics (id) on delete set null,
+  set_name       text,
   prompt         text not null,
   type           text not null default 'mcq'
                  check (type in ('mcq','true_false','prediction','numerical','find_error','exit_ticket')),
@@ -55,6 +56,8 @@ create table if not exists public.questions (
   is_published   boolean not null default true,
   created_at     timestamptz not null default now()
 );
+
+alter table public.questions add column if not exists set_name text;
 
 create index if not exists questions_teacher_idx on public.questions (teacher_id, created_at desc);
 create index if not exists questions_topic_idx    on public.questions (topic_id);

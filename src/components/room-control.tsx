@@ -844,6 +844,7 @@ interface BankQuestion {
   explanation: string | null;
   timer_seconds: number;
   difficulty: Difficulty;
+  set_name: string | null;
 }
 
 function QuestionComposer({
@@ -870,6 +871,7 @@ function QuestionComposer({
   const [busy, setBusy] = useState(false);
 
   const [bankQuestions, setBankQuestions] = useState<BankQuestion[]>([]);
+  const [selectedSetFilter, setSelectedSetFilter] = useState<string>("all");
 
   useEffect(() => {
     if (!open) return;
@@ -879,9 +881,9 @@ function QuestionComposer({
       const sb = createClient();
       const { data } = await sb
         .from("questions")
-        .select("id,prompt,type,options,correct_answer,explanation,timer_seconds,difficulty")
+        .select("id,prompt,type,options,correct_answer,explanation,timer_seconds,difficulty,set_name")
         .order("created_at", { ascending: false })
-        .limit(30);
+        .limit(50);
       if (cancelled) return;
       if (data) setBankQuestions(data as BankQuestion[]);
     })();
@@ -889,6 +891,19 @@ function QuestionComposer({
       cancelled = true;
     };
   }, [open]);
+
+  const availableSets = useMemo(() => {
+    const sets = new Set<string>();
+    bankQuestions.forEach((bq) => {
+      if (bq.set_name) sets.add(bq.set_name);
+    });
+    return Array.from(sets);
+  }, [bankQuestions]);
+
+  const filteredBankQuestions = useMemo(() => {
+    if (selectedSetFilter === "all") return bankQuestions;
+    return bankQuestions.filter((bq) => bq.set_name === selectedSetFilter);
+  }, [bankQuestions, selectedSetFilter]);
 
   function pickFromBank(q: BankQuestion) {
     setPrompt(q.prompt);
@@ -986,9 +1001,26 @@ function QuestionComposer({
 
         {bankQuestions.length > 0 && (
           <div className="grid gap-2 border-b border-border pb-4">
-            <Label className="text-xs font-bold text-[var(--primary)] uppercase tracking-wide">
-              Pick from Question Bank
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-bold text-[var(--primary)] uppercase tracking-wide">
+                Pick from Question Bank
+              </Label>
+              {availableSets.length > 0 && (
+                <Select value={selectedSetFilter} onValueChange={(val) => setSelectedSetFilter(val ?? "all")}>
+                  <SelectTrigger className="h-7 w-[160px] text-xs">
+                    <SelectValue placeholder="Filter by Set" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sets / Questions</SelectItem>
+                    {availableSets.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        Set: {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
             <Select onValueChange={(qId) => {
               const selected = bankQuestions.find(bq => bq.id === qId);
               if (selected) pickFromBank(selected);
@@ -997,9 +1029,11 @@ function QuestionComposer({
                 <SelectValue placeholder="Select a saved question..." />
               </SelectTrigger>
               <SelectContent>
-                {bankQuestions.map((q) => (
+                {filteredBankQuestions.map((q) => (
                   <SelectItem key={q.id} value={q.id}>
-                    <span className="truncate max-w-[320px] inline-block">{q.prompt}</span>
+                    <span className="truncate max-w-[320px] inline-block">
+                      {q.set_name ? `[${q.set_name}] ` : ""}{q.prompt}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
