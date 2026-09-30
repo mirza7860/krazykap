@@ -8,6 +8,7 @@ import { ValueBars, groupValues } from "@/components/value-bars";
 import { TimerRing } from "@/components/timer-ring";
 import { RoomQr } from "@/components/room-qr";
 import { Leaderboard } from "@/components/leaderboard";
+import { PodiumView } from "@/components/podium-view";
 import { useTeacherRoom } from "@/lib/use-teacher-room";
 import { useRoomChannel } from "@/lib/use-room-channel";
 import { useCountdown } from "@/lib/use-countdown";
@@ -349,7 +350,13 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
             <Leaderboard rows={state.leaderboard} max={10} />
           </div>
 
-          {winner && (
+              {closed && state.leaderboard.length > 0 && (
+                <div className="mb-6">
+                  <PodiumView leaderboard={state.leaderboard} />
+                </div>
+              )}
+
+              {winner && !closed && (
             <div className="rounded-3xl border border-[var(--gold)]/45 bg-[var(--gold)]/12 p-5 text-center">
               <p className="text-xs font-bold tracking-widest text-muted-foreground uppercase">
                 Leading the room

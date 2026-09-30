@@ -62,8 +62,19 @@ export function Dashboard() {
   const [title, setTitle] = useState("");
   const [creating, setCreating] = useState(false);
 
+  interface PastRoomRow {
+    id: string;
+    code: string;
+    title: string;
+    status: string;
+    rounds_total: number;
+    created_at: string;
+    closed_at: string | null;
+  }
+
   const [questions, setQuestions] = useState<QuestionRow[]>([]);
   const [topics, setTopics] = useState<TopicRow[]>([]);
+  const [pastRooms, setPastRooms] = useState<PastRoomRow[]>([]);
   const [loadingQs, setLoadingQs] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
 
@@ -74,16 +85,22 @@ export function Dashboard() {
 
   async function loadBank() {
     setLoadingQs(true);
-    const [q, t] = await Promise.all([
+    const [q, t, r] = await Promise.all([
       supabase
         .from("questions")
         .select("id,prompt,type,difficulty,options,correct_answer,explanation,timer_seconds,topic_id")
         .order("created_at", { ascending: false })
         .limit(50),
       supabase.from("topics").select("id,name").order("name"),
+      supabase
+        .from("rooms")
+        .select("id,code,title,status,rounds_total,created_at,closed_at")
+        .order("created_at", { ascending: false })
+        .limit(20),
     ]);
     if (q.data) setQuestions(q.data as QuestionRow[]);
     if (t.data) setTopics(t.data as TopicRow[]);
+    if (r.data) setPastRooms(r.data as PastRoomRow[]);
     setLoadingQs(false);
   }
 
@@ -201,6 +218,47 @@ export function Dashboard() {
               </button>
             ))}
           </div>
+        </section>
+
+        <Separator className="my-8" />
+
+        {/* ----------------------------------------------- room history */}
+        <section className="mb-8">
+          <div className="mb-4">
+            <h2 className="flex items-center gap-2 font-display text-xl font-extrabold">
+              <Clock className="size-5 text-[var(--primary)]" /> Room History
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Past classroom sessions saved for your reference.
+            </p>
+          </div>
+
+          {pastRooms.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border px-6 py-8 text-center text-sm text-muted-foreground">
+              No previous room history yet.
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {pastRooms.map((r) => (
+                <div key={r.id} className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-display text-base font-bold">{r.title}</span>
+                    <Badge variant={r.status === "active" ? "default" : "secondary"}>
+                      {r.status}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 font-mono text-xs text-muted-foreground">Code: {r.code}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {r.rounds_total} question{r.rounds_total === 1 ? "" : "s"} launched
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    {new Date(r.created_at).toLocaleDateString()} at{" "}
+                    {new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <Separator className="my-8" />

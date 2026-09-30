@@ -778,9 +778,30 @@ begin
   end if;
 
   if v_correct then
-    v_points := 100;
-    v_bonus   := public.speed_bonus(v_elapsed, v_window);
-    v_xp     := v_points + v_bonus;
+    declare
+      v_speed_rank integer;
+    begin
+      -- Determine speed rank among correct submitters for this activity
+      select count(*)::int + 1 into v_speed_rank
+        from public.responses
+       where activity_id = v_act.id
+         and is_correct = true
+         and participant_id <> v_pid
+         and (reaction_ms < greatest(0, round(v_elapsed * 1000)::int)
+              or (reaction_ms = greatest(0, round(v_elapsed * 1000)::int) and submitted_at <= v_now));
+
+      if v_speed_rank = 1 then
+        v_xp := 20;
+      elsif v_speed_rank = 2 then
+        v_xp := 10;
+      elsif v_speed_rank = 3 then
+        v_xp := 5;
+      else
+        v_xp := 1;
+      end if;
+      v_points := v_xp;
+      v_bonus := 0;
+    end;
   end if;
 
   if v_exists.id is null then
@@ -961,7 +982,8 @@ begin
                   then round(100.0 * p.correct_count / p.answered_count) else null end as accuracy,
              (select round(avg(r.reaction_ms)) from public.responses r
                where r.participant_id = p.id) as avg_speed,
-             (select count(*) from public.activities a where a.room_id = p.room_id) as rounds
+             (select count(*) from public.activities a where a.room_id = p.room_id) as rounds,
+             p.joined_at
         from public.participants p
        where p.room_id = $1
     ),
@@ -978,9 +1000,9 @@ begin
       from base
     )
     select coalesce(jsonb_agg(x order by rn), '[]'::jsonb) from (
-      select row_number() over (order by score desc, xp desc, joined_at_dummy asc) as rn,
+      select row_number() over (order by score desc, xp desc, correct_count desc, coalesce(avg_speed, 999999) asc, joined_at asc, id asc) as rn,
              jsonb_build_object(
-               'rank', row_number() over (order by score desc, xp desc, joined_at_dummy asc),
+               'rank', row_number() over (order by score desc, xp desc, correct_count desc, coalesce(avg_speed, 999999) asc, joined_at asc, id asc),
                'id', id, 'nickname', nickname, 'team', team, 'xp', xp,
                'streak', streak, 'best_streak', best_streak,
                'correct_count', correct_count, 'answered_count', answered_count,
@@ -988,9 +1010,9 @@ begin
                'score', score
              ) as x
       from (
-        select *, 0 as joined_at_dummy from scored
+        select p_sub.*, p_sub.joined_at from scored p_sub
       ) s
-      order by score desc
+      order by score desc, xp desc, correct_count desc, coalesce(avg_speed, 999999) asc, joined_at asc, id asc
       limit $3
     ) t
   $q$

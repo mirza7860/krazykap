@@ -8,6 +8,7 @@ import { ResponseBars } from "@/components/response-bars";
 import { ValueBars, groupValues } from "@/components/value-bars";
 import { TimerRing } from "@/components/timer-ring";
 import { Leaderboard } from "@/components/leaderboard";
+import { PodiumView } from "@/components/podium-view";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -834,6 +835,17 @@ function SettingsCard({
 
 /* ------------------------------------------------------------ composer --- */
 
+interface BankQuestion {
+  id: string;
+  prompt: string;
+  type: string;
+  options: string[];
+  correct_answer: (string | number)[];
+  explanation: string | null;
+  timer_seconds: number;
+  difficulty: Difficulty;
+}
+
 function QuestionComposer({
   open,
   onOpenChange,
@@ -856,6 +868,45 @@ function QuestionComposer({
   const [difficulty, setDifficulty] = useState<Difficulty>("Medium");
   const [topic, setTopic] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const [bankQuestions, setBankQuestions] = useState<BankQuestion[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      const { createClient } = await import("@/lib/client");
+      const sb = createClient();
+      const { data } = await sb
+        .from("questions")
+        .select("id,prompt,type,options,correct_answer,explanation,timer_seconds,difficulty")
+        .order("created_at", { ascending: false })
+        .limit(30);
+      if (cancelled) return;
+      if (data) setBankQuestions(data as BankQuestion[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  function pickFromBank(q: BankQuestion) {
+    setPrompt(q.prompt);
+    setType(q.type);
+    if (q.type === "numerical") {
+      setNumeric(String(q.correct_answer?.[0] ?? ""));
+      setTolerance(String(q.correct_answer?.[1] ?? "0"));
+    } else {
+      setOptions(q.options && q.options.length > 0 ? q.options : ["", "", "", ""]);
+      setCorrectIdx(
+        typeof q.correct_answer?.[0] === "number" ? (q.correct_answer[0] as number) : 0
+      );
+    }
+    if (q.explanation) setExplanation(q.explanation);
+    if (q.timer_seconds) setTimer(q.timer_seconds);
+    if (q.difficulty) setDifficulty(q.difficulty);
+    toast.success("Loaded question from bank");
+  }
 
   // true_false and exit_ticket present a fixed, non-editable option shelf.
   // The launch payload has to use it — the free-form `options` state is empty
@@ -932,6 +983,29 @@ function QuestionComposer({
             Goes live on every connected phone the moment you press Launch.
           </DialogDescription>
         </DialogHeader>
+
+        {bankQuestions.length > 0 && (
+          <div className="grid gap-2 border-b border-border pb-4">
+            <Label className="text-xs font-bold text-[var(--primary)] uppercase tracking-wide">
+              Pick from Question Bank
+            </Label>
+            <Select onValueChange={(qId) => {
+              const selected = bankQuestions.find(bq => bq.id === qId);
+              if (selected) pickFromBank(selected);
+            }}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a saved question..." />
+              </SelectTrigger>
+              <SelectContent>
+                {bankQuestions.map((q) => (
+                  <SelectItem key={q.id} value={q.id}>
+                    <span className="truncate max-w-[320px] inline-block">{q.prompt}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <div className="grid gap-2">
           <Label>Quick Challenge</Label>
@@ -1171,6 +1245,13 @@ function SummaryDialog({
                 )}
               </div>
             )}
+
+            <div>
+              <p className="mb-2 text-xs font-bold tracking-widest text-muted-foreground uppercase">
+                Top 3 Podium
+              </p>
+              <PodiumView leaderboard={summary.leaderboard} />
+            </div>
 
             <div>
               <p className="mb-2 text-xs font-bold tracking-widest text-muted-foreground uppercase">
