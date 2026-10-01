@@ -37,6 +37,7 @@ const emptySubscribe = () => () => {};
 export function DisplayBoard({ code }: { code: string }) {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<"v1" | "v2">("v1");
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +69,7 @@ export function DisplayBoard({ code }: { code: string }) {
 
   if (resolveError) {
     return (
-      <Shell code={code}>
+      <Shell code={code} theme={theme} onThemeChange={setTheme}>
         <div className="grid place-items-center rounded-3xl border bg-card p-12 text-center">
           <div>
             <p className="font-display text-3xl font-extrabold">
@@ -91,7 +92,7 @@ export function DisplayBoard({ code }: { code: string }) {
 
   if (!ready || (!state && !error)) {
     return (
-      <Shell code={code}>
+      <Shell code={code} theme={theme} onThemeChange={setTheme}>
         <div className="flex items-center justify-center gap-3 py-40 text-muted-foreground">
           <Loader2 className="size-5 animate-spin" /> Connecting to room…
         </div>
@@ -101,7 +102,7 @@ export function DisplayBoard({ code }: { code: string }) {
 
   if (!state) {
     return (
-      <Shell code={code}>
+      <Shell code={code} theme={theme} onThemeChange={setTheme}>
         <div className="grid place-items-center rounded-3xl border bg-card p-12 text-center">
           <div>
             <p className="font-display text-3xl font-extrabold">Couldn&apos;t load</p>
@@ -112,26 +113,61 @@ export function DisplayBoard({ code }: { code: string }) {
     );
   }
 
-  return <Board state={state} code={code} />;
+  return <Board state={state} code={code} theme={theme} onThemeChange={setTheme} />;
 }
 
-function Shell({ code, children }: { code: string; children: React.ReactNode }) {
+function Shell({
+  code,
+  theme,
+  onThemeChange,
+  children,
+}: {
+  code: string;
+  theme: "v1" | "v2";
+  onThemeChange: (t: "v1" | "v2") => void;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-5 px-5 py-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+    <div
+      className={
+        theme === "v2"
+          ? "min-h-dvh bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-100 p-6"
+          : "mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-5 px-5 py-6"
+      }
+    >
+      <header className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
           <Logo />
         </div>
-        <span className="room-code rounded-xl bg-[var(--primary)] px-3 py-1.5 text-lg font-bold text-white">
-          {code}
-        </span>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => onThemeChange(theme === "v1" ? "v2" : "v1")}
+            className="rounded-lg border border-border bg-card/80 px-3 py-1 text-xs font-bold text-foreground shadow-sm hover:bg-muted"
+          >
+            Theme: {theme.toUpperCase()}
+          </button>
+          <span className="room-code rounded-xl bg-[var(--primary)] px-3 py-1.5 text-lg font-bold text-white">
+            {code}
+          </span>
+        </div>
       </header>
       {children}
     </div>
   );
 }
 
-function Board({ state, code }: { state: TeacherState; code: string }) {
+function Board({
+  state,
+  code,
+  theme,
+  onThemeChange,
+}: {
+  state: TeacherState;
+  code: string;
+  theme: "v1" | "v2";
+  onThemeChange: (t: "v1" | "v2") => void;
+}) {
   const a = state.activity;
   const total = state.participants.length;
   const answered = a?.response_count ?? 0;
@@ -167,9 +203,10 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
       : null;
 
   const winner = state.leaderboard[0];
+  const showDistribution = a?.state === "distribution" || a?.state === "revealed" || a?.state === "leaderboard";
 
   return (
-    <>
+    <Shell code={code} theme={theme} onThemeChange={onThemeChange}>
       {/* ------------------------------------------------ stats strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Players" value={total} />
@@ -223,26 +260,35 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
                 )}
               </div>
 
-              <div className="rounded-3xl border border-border bg-card p-5 sm:p-6">
-                <p className="mb-3 text-xs font-bold tracking-widest text-muted-foreground uppercase">
-                  Live response distribution
-                </p>
-                {numeric ? (
-                  <ValueBars buckets={valueBuckets} total={answered} />
-                ) : (
-                  <ResponseBars
-                    buckets={buckets}
-                    total={answered}
-                    optionCount={a.options?.length || 4}
-                    correctIndex={correctIndex}
-                  />
-                )}
-                {!revealed && (
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Anonymous split — no names, no individual answers, until you reveal.
+              {showDistribution ? (
+                <div className="rounded-3xl border border-border bg-card p-5 sm:p-6">
+                  <p className="mb-3 text-xs font-bold tracking-widest text-muted-foreground uppercase">
+                    Live response distribution
                   </p>
-                )}
-              </div>
+                  {numeric ? (
+                    <ValueBars buckets={valueBuckets} total={answered} />
+                  ) : (
+                    <ResponseBars
+                      buckets={buckets}
+                      total={answered}
+                      optionCount={a.options?.length || 4}
+                      correctIndex={correctIndex}
+                    />
+                  )}
+                  {!revealed && (
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Anonymous split — no names, no individual answers, until you reveal.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-border bg-card/60 p-8 text-center">
+                  <p className="font-display text-lg font-bold">Responses Collecting</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Distribution will be displayed when controlled from teacher screen.
+                  </p>
+                </div>
+              )}
 
               {revealed && a.type !== "numerical" && (
                 <div className="rounded-3xl border border-border bg-card p-5 sm:p-6">
@@ -388,7 +434,7 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
           </div>
         </aside>
       </main>
-    </>
+    </Shell>
   );
 }
 

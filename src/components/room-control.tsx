@@ -43,7 +43,6 @@ import {
   rpcError,
   setActivityState,
   setRoomSettings,
-  autoAssignTeams,
   decideChallenge,
 } from "@/lib/rpc";
 import {
@@ -202,6 +201,8 @@ function ControlHeader({
   const [confirming, setConfirming] = useState(false);
   const [ending, setEnding] = useState(false);
 
+  const [podiumModalOpen, setPodiumModalOpen] = useState(false);
+
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-card/85 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
@@ -238,6 +239,9 @@ function ControlHeader({
         )}
 
         <div className="ml-auto flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPodiumModalOpen(true)}>
+            🏆 Podium
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => onSummaryOpenChange(true)}>
             <BarChart3 className="size-4" /> Summary
           </Button>
@@ -260,6 +264,17 @@ function ControlHeader({
         summary={summary}
         running={status === "active" || status === "lobby"}
       />
+
+      <Dialog open={podiumModalOpen} onOpenChange={setPodiumModalOpen}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl font-extrabold">
+              🏆 Olympic Podium Stand
+            </DialogTitle>
+          </DialogHeader>
+          <PodiumView leaderboard={summary?.leaderboard || []} />
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent className="sm:max-w-sm">
@@ -341,18 +356,6 @@ function RoomBody({
           <div className="flex flex-wrap gap-2">
             <Button size="lg" onClick={() => setComposerOpen(true)}>
               <Plus className="size-4" /> New question
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              onClick={async () => {
-                const { error } = await autoAssignTeams(roomId, 2);
-                if (error) return toast.error(error);
-                toast.success("Teams assigned");
-                onChange();
-              }}
-            >
-              <Users className="size-4" /> Auto teams
             </Button>
           </div>
         )}
@@ -1138,19 +1141,15 @@ function QuestionComposer({
 
         <div className="grid grid-cols-3 gap-3">
           <div className="grid gap-2">
-            <Label>Timer</Label>
-            <Select value={String(timer)} onValueChange={(v) => setTimer(Number(v))}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[10, 20, 30, 45, 60, 90].map((s) => (
-                  <SelectItem key={s} value={String(s)}>
-                    {s}s
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>Custom Timer (sec)</Label>
+            <Input
+              type="number"
+              min={5}
+              max={3600}
+              value={timer}
+              onChange={(e) => setTimer(Math.max(1, Number(e.target.value)))}
+              placeholder="e.g. 60"
+            />
           </div>
           <div className="grid gap-2">
             <Label>Difficulty</Label>

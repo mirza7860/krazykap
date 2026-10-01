@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button";
 export function PodiumView({ leaderboard }: { leaderboard: LeaderboardRow[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const first = leaderboard[0];
-  const second = leaderboard[1];
-  const third = leaderboard[2];
+  const correctLeaderboard = leaderboard.filter((r) => r.correct_count > 0);
+
+  const first = correctLeaderboard[0];
+  const second = correctLeaderboard[1];
+  const third = correctLeaderboard[2];
 
   const handleDownload = () => {
     if (!containerRef.current) return;
