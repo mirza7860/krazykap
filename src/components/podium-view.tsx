@@ -33,6 +33,13 @@ export function PodiumView({ leaderboard }: { leaderboard: LeaderboardRow[] }) {
     ctx.fillStyle = "#0f172a"; // dark background
     ctx.fillRect(0, 0, width, height);
 
+    // Draw KAP Logo on Canvas
+    const logoImg = new Image();
+    logoImg.src = "/kap-logo.webp";
+    logoImg.onload = () => {
+      ctx.drawImage(logoImg, 20, 20, 70, 28);
+    };
+
     // Title
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 24px sans-serif";
@@ -106,6 +113,10 @@ export function PodiumView({ leaderboard }: { leaderboard: LeaderboardRow[] }) {
         ref={containerRef}
         className="relative flex w-full max-w-2xl items-end justify-center gap-3 sm:gap-6 rounded-3xl border border-border bg-card p-6 sm:p-10 pt-16 shadow-lg min-h-[380px]"
       >
+        {/* KAP Branding Logo on top corner */}
+        <div className="absolute top-4 left-6 flex items-center gap-2">
+          <img src="/kap-logo.webp" alt="KAP Logo" className="h-6 object-contain invert brightness-200" />
+        </div>
         {/* 2nd Place - Silver (Left Stair) */}
         <div className="flex flex-col items-center flex-1 max-w-[150px]">
           {second ? (

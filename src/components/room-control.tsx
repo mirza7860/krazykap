@@ -328,6 +328,73 @@ function RoomBody({
   const activity = state.activity;
   const [composerOpen, setComposerOpen] = useState(false);
 
+  const [quickSetQuestions, setQuickSetQuestions] = useState<BankQuestion[]>([]);
+  const [quickSetFilter, setQuickSetFilter] = useState<string>("all");
+  const [quickSetIndex, setQuickSetIndex] = useState<number>(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { createClient } = await import("@/lib/client");
+      const sb = createClient();
+      const { data } = await sb
+        .from("questions")
+        .select("id,prompt,type,options,correct_answer,explanation,timer_seconds,difficulty,set_name")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (cancelled) return;
+      if (data) setQuickSetQuestions(data as BankQuestion[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const quickAvailableSets = useMemo(() => {
+    const sets = new Set<string>();
+    quickSetQuestions.forEach((bq) => {
+      if (bq.set_name) sets.add(bq.set_name);
+    });
+    return Array.from(sets);
+  }, [quickSetQuestions]);
+
+  const quickFilteredQuestions = useMemo(() => {
+    if (quickSetFilter === "all") return quickSetQuestions;
+    return quickSetQuestions.filter((bq) => bq.set_name === quickSetFilter);
+  }, [quickSetQuestions, quickSetFilter]);
+
+  async function handleQuickLaunchNextInSet() {
+    if (quickFilteredQuestions.length === 0) return;
+    const q = quickFilteredQuestions[quickSetIndex % quickFilteredQuestions.length];
+    setQuickSetIndex((prev) => (prev + 1) % quickFilteredQuestions.length);
+
+    let clean = q.options?.map((o) => o.trim()).filter(Boolean) || [];
+    let correct: (string | number)[] = [typeof q.correct_answer?.[0] === "number" ? q.correct_answer[0] : 0];
+
+    if (q.type === "numerical") {
+      clean = [];
+      correct = [String(q.correct_answer?.[0] ?? "0"), String(q.correct_answer?.[1] ?? "0")];
+    } else if (q.type === "true_false") {
+      clean = ["True", "False"];
+    }
+
+    const { error } = await launchActivity({
+      roomId,
+      prompt: q.prompt,
+      type: q.type,
+      options: clean,
+      correct,
+      timer: q.timer_seconds || 30,
+      explanation: q.explanation || undefined,
+      difficulty: q.difficulty || "Medium",
+    });
+
+    if (error) return toast.error(error);
+    toast.success(`Launched question from Set "${q.set_name || "Bank"}"!`);
+    emit("launched");
+    onChange();
+  }
+
   const answered = activity?.response_count ?? 0;
   const total = state.participants.length;
   const waiting = total - answered;
@@ -353,10 +420,35 @@ function RoomBody({
         )}
 
         {activity && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-3 bg-card p-3 rounded-2xl border border-border">
             <Button size="lg" onClick={() => setComposerOpen(true)}>
               <Plus className="size-4" /> New question
             </Button>
+
+            {quickAvailableSets.length > 0 && (
+              <div className="flex items-center gap-2 ml-auto">
+                <span className="text-xs font-bold text-muted-foreground uppercase">Active Set:</span>
+                <Select value={quickSetFilter} onValueChange={(v) => {
+                  setQuickSetFilter(v ?? "all");
+                  setQuickSetIndex(0);
+                }}>
+                  <SelectTrigger className="h-10 w-[180px] text-xs">
+                    <SelectValue placeholder="Select Question Set" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Questions</SelectItem>
+                    {quickAvailableSets.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        Set: {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button size="lg" variant="secondary" onClick={() => void handleQuickLaunchNextInSet()} className="bg-[var(--ember)] text-white hover:bg-[var(--ember)]/90">
+                  <Rocket className="size-4" /> Launch Next in Set ⏭
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
