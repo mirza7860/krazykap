@@ -25,10 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase, createRoom, rpcError } from "@/lib/rpc";
+import { supabase, createRoom, getSessionSummary, rpcError } from "@/lib/rpc";
 import { saveLastRoom } from "@/lib/session";
 import { DIFFICULTIES, QUICK_TEMPLATES } from "@/lib/game";
-import type { Difficulty } from "@/lib/types";
+import type { Difficulty, SessionSummary } from "@/lib/types";
+import { PodiumView } from "@/components/podium-view";
 import { toast } from "sonner";
 import {
   Plus,
@@ -37,6 +38,9 @@ import {
   BookOpen,
   Loader2,
   Clock,
+  BarChart3,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 
 interface QuestionRow {
@@ -80,6 +84,20 @@ export function Dashboard() {
   const [builderOpen, setBuilderOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [selectedHistoryRoom, setSelectedHistoryRoom] = useState<PastRoomRow | null>(null);
+  const [historySummary, setHistorySummary] = useState<SessionSummary | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  async function openRoomHistory(r: PastRoomRow) {
+    setSelectedHistoryRoom(r);
+    setHistoryModalOpen(true);
+    setLoadingHistory(true);
+    const { data } = await getSessionSummary(r.id);
+    if (data) setHistorySummary(data as SessionSummary);
+    setLoadingHistory(false);
+  }
 
   useEffect(() => {
     void supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ""));
@@ -261,10 +279,8 @@ export function Dashboard() {
                       {new Date(r.created_at).toLocaleDateString()} at{" "}
                       {new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
-                    <Button variant="ghost" size="xs" asChild>
-                      <Link href={`/room/${r.code}`}>
-                        Control Centre
-                      </Link>
+                    <Button variant="outline" size="xs" onClick={() => void openRoomHistory(r)}>
+                      <BarChart3 className="size-3" /> View Summary
                     </Button>
                   </div>
                 </div>
@@ -379,6 +395,106 @@ export function Dashboard() {
           setImportOpen(true);
         }}
       />
+
+      <Dialog open={historyModalOpen} onOpenChange={setHistoryModalOpen}>
+        <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl font-extrabold flex items-center gap-2">
+              <Clock className="size-5 text-[var(--primary)]" /> Past Session History Summary
+            </DialogTitle>
+            <DialogDescription>
+              Room: <span className="font-bold text-foreground">{selectedHistoryRoom?.title}</span> ({selectedHistoryRoom?.code})
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingHistory ? (
+            <div className="flex items-center justify-center gap-2 py-20 text-muted-foreground">
+              <Loader2 className="size-5 animate-spin" /> Fetching room history metrics…
+            </div>
+          ) : !historySummary ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">
+              No summary recorded for this room.
+            </div>
+          ) : (
+            <div className="grid gap-6">
+              {/* Stats overview strip */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-2xl border border-border bg-card p-3 text-center">
+                  <p className="text-[10px] font-bold tracking-widest text-muted-foreground uppercase">Students</p>
+                  <p className="font-display text-2xl font-extrabold">{historySummary.students}</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-card p-3 text-center">
+                  <p className="text-[10px] font-bold tracking-widest text-muted-foreground uppercase">Questions</p>
+                  <p className="font-display text-2xl font-extrabold">{historySummary.questions}</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-card p-3 text-center">
+                  <p className="text-[10px] font-bold tracking-widest text-muted-foreground uppercase">Avg Accuracy</p>
+                  <p className="font-display text-2xl font-extrabold text-[var(--success)]">{historySummary.avg_accuracy}%</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-card p-3 text-center">
+                  <p className="text-[10px] font-bold tracking-widest text-muted-foreground uppercase">Responses</p>
+                  <p className="font-display text-2xl font-extrabold">{historySummary.total_responses}</p>
+                </div>
+              </div>
+
+              {/* Olympic Top 3 Podium */}
+              {historySummary.leaderboard && historySummary.leaderboard.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-bold tracking-widest text-muted-foreground uppercase">
+                    🏆 Top 3 Podium Stand
+                  </p>
+                  <PodiumView leaderboard={historySummary.leaderboard} />
+                </div>
+              )}
+
+              {/* Detailed Student Progress & Score Breakdown */}
+              <div>
+                <p className="mb-2 text-xs font-bold tracking-widest text-muted-foreground uppercase">
+                  Student Performance &amp; Accuracy Breakdown
+                </p>
+                <ul className="grid gap-2 max-h-[300px] overflow-y-auto pr-1">
+                  {historySummary.leaderboard.map((student) => {
+                    const wrongCount = Math.max(0, student.answered_count - student.correct_count);
+                    const accuracyPct = student.answered_count > 0 ? Math.round((student.correct_count / student.answered_count) * 100) : 0;
+                    return (
+                      <li key={student.id} className="rounded-xl border border-border bg-card p-3 flex flex-col gap-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-display font-bold text-sm truncate">{student.nickname}</span>
+                            <span className="text-xs font-semibold text-[var(--primary)] tabular-nums">{student.xp} XP</span>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs font-semibold tabular-nums">
+                            <span className="text-[var(--success)] flex items-center gap-1">
+                              <CheckCircle2 className="size-3.5" /> {student.correct_count} correct
+                            </span>
+                            <span className="text-muted-foreground flex items-center gap-1">
+                              <XCircle className="size-3.5 text-destructive" /> {wrongCount} wrong
+                            </span>
+                            <span className="font-bold">{student.correct_count}/{historySummary.questions} solved</span>
+                          </div>
+                        </div>
+
+                        {/* Progress Status Bar */}
+                        <div className="flex items-center gap-2">
+                          <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="absolute inset-y-0 left-0 bg-[var(--success)] transition-all"
+                              style={{ width: `${accuracyPct}%` }}
+                            />
+                          </div>
+                          <span className="text-[11px] font-bold tabular-nums text-muted-foreground w-10 text-right">
+                            {accuracyPct}%
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
