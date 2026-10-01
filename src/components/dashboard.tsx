@@ -243,21 +243,30 @@ export function Dashboard() {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {pastRooms.map((r) => (
-                <div key={r.id} className="rounded-xl border border-border bg-card p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-display text-base font-bold">{r.title}</span>
-                    <Badge variant={r.status === "active" ? "default" : "secondary"}>
-                      {r.status}
-                    </Badge>
+                <div key={r.id} className="rounded-xl border border-border bg-card p-4 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-display text-base font-bold">{r.title}</span>
+                      <Badge variant={r.status === "active" ? "default" : "secondary"}>
+                        {r.status}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 font-mono text-xs text-muted-foreground">Code: {r.code}</p>
+                    <p className="mt-2 text-xs font-semibold text-foreground">
+                      {r.rounds_total} question{r.rounds_total === 1 ? "" : "s"} launched
+                    </p>
                   </div>
-                  <p className="mt-1 font-mono text-xs text-muted-foreground">Code: {r.code}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {r.rounds_total} question{r.rounds_total === 1 ? "" : "s"} launched
-                  </p>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    {new Date(r.created_at).toLocaleDateString()} at{" "}
-                    {new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </p>
+                  <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-2">
+                    <span className="text-[10px] text-muted-foreground">
+                      {new Date(r.created_at).toLocaleDateString()} at{" "}
+                      {new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                    <Button variant="ghost" size="xs" asChild>
+                      <Link href={`/room/${r.code}`}>
+                        Control Centre
+                      </Link>
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>

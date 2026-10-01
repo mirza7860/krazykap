@@ -37,7 +37,6 @@ const emptySubscribe = () => () => {};
 export function DisplayBoard({ code }: { code: string }) {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
-  const [theme, setTheme] = useState<"v1" | "v2">("v1");
 
   useEffect(() => {
     let cancelled = false;
@@ -69,7 +68,7 @@ export function DisplayBoard({ code }: { code: string }) {
 
   if (resolveError) {
     return (
-      <Shell code={code} theme={theme} onThemeChange={setTheme}>
+      <Shell code={code}>
         <div className="grid place-items-center rounded-3xl border bg-card p-12 text-center">
           <div>
             <p className="font-display text-3xl font-extrabold">
@@ -92,7 +91,7 @@ export function DisplayBoard({ code }: { code: string }) {
 
   if (!ready || (!state && !error)) {
     return (
-      <Shell code={code} theme={theme} onThemeChange={setTheme}>
+      <Shell code={code}>
         <div className="flex items-center justify-center gap-3 py-40 text-muted-foreground">
           <Loader2 className="size-5 animate-spin" /> Connecting to room…
         </div>
@@ -102,7 +101,7 @@ export function DisplayBoard({ code }: { code: string }) {
 
   if (!state) {
     return (
-      <Shell code={code} theme={theme} onThemeChange={setTheme}>
+      <Shell code={code}>
         <div className="grid place-items-center rounded-3xl border bg-card p-12 text-center">
           <div>
             <p className="font-display text-3xl font-extrabold">Couldn&apos;t load</p>
@@ -113,61 +112,26 @@ export function DisplayBoard({ code }: { code: string }) {
     );
   }
 
-  return <Board state={state} code={code} theme={theme} onThemeChange={setTheme} />;
+  return <Board state={state} code={code} />;
 }
 
-function Shell({
-  code,
-  theme,
-  onThemeChange,
-  children,
-}: {
-  code: string;
-  theme: "v1" | "v2";
-  onThemeChange: (t: "v1" | "v2") => void;
-  children: React.ReactNode;
-}) {
+function Shell({ code, children }: { code: string; children: React.ReactNode }) {
   return (
-    <div
-      className={
-        theme === "v2"
-          ? "min-h-dvh bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-100 p-6"
-          : "mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-5 px-5 py-6"
-      }
-    >
-      <header className="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-5 px-5 py-6">
+      <header className="flex flex-wrap items-center justify-between gap-3 mb-2">
         <div className="flex items-center gap-3">
           <Logo />
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => onThemeChange(theme === "v1" ? "v2" : "v1")}
-            className="rounded-lg border border-border bg-card/80 px-3 py-1 text-xs font-bold text-foreground shadow-sm hover:bg-muted"
-          >
-            Theme: {theme.toUpperCase()}
-          </button>
-          <span className="room-code rounded-xl bg-[var(--primary)] px-3 py-1.5 text-lg font-bold text-white">
-            {code}
-          </span>
-        </div>
+        <span className="room-code rounded-xl bg-[var(--primary)] px-3 py-1.5 text-lg font-bold text-white">
+          {code}
+        </span>
       </header>
       {children}
     </div>
   );
 }
 
-function Board({
-  state,
-  code,
-  theme,
-  onThemeChange,
-}: {
-  state: TeacherState;
-  code: string;
-  theme: "v1" | "v2";
-  onThemeChange: (t: "v1" | "v2") => void;
-}) {
+function Board({ state, code }: { state: TeacherState; code: string }) {
   const a = state.activity;
   const total = state.participants.length;
   const answered = a?.response_count ?? 0;
@@ -202,11 +166,10 @@ function Board({
         : 0
       : null;
 
-  const winner = state.leaderboard[0];
   const showDistribution = a?.state === "distribution" || a?.state === "revealed" || a?.state === "leaderboard";
 
   return (
-    <Shell code={code} theme={theme} onThemeChange={onThemeChange}>
+    <Shell code={code}>
       {/* ------------------------------------------------ stats strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Players" value={total} />
@@ -389,11 +352,10 @@ function Board({
           <div className="rounded-3xl border border-border bg-card p-5">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-heading text-lg font-bold">Leaderboard</h3>
-              <span className="rounded-lg bg-[var(--primary)]/10 px-2 py-0.5 text-[11px] font-bold text-[var(--primary)]">
-                top 10
-              </span>
             </div>
-            <Leaderboard rows={state.leaderboard} max={10} />
+            <div className="max-h-[420px] overflow-y-auto pr-1">
+              <Leaderboard rows={state.leaderboard} max={50} />
+            </div>
           </div>
 
               {closed && state.leaderboard.length > 0 && (
@@ -402,27 +364,13 @@ function Board({
                 </div>
               )}
 
-              {winner && !closed && (
-            <div className="rounded-3xl border border-[var(--gold)]/45 bg-[var(--gold)]/12 p-5 text-center">
-              <p className="text-xs font-bold tracking-widest text-muted-foreground uppercase">
-                Leading the room
-              </p>
-              <p className="font-display mt-1 text-3xl font-extrabold">
-                {winner.nickname}
-              </p>
-              <p className="mt-1 text-sm font-semibold text-muted-foreground">
-                {winner.xp} XP · {winner.correct_count}/{winner.answered_count} correct
-              </p>
-            </div>
-          )}
-
           <div className="rounded-3xl border border-border bg-card p-5">
             <p className="text-xs font-bold tracking-widest text-muted-foreground uppercase">
               In the room
             </p>
             <p className="font-display mt-1 text-4xl font-extrabold">{total}</p>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {state.participants.slice(0, 24).map((p) => (
+            <div className="mt-3 flex max-h-[140px] flex-wrap gap-1.5 overflow-y-auto pr-1">
+              {state.participants.map((p) => (
                 <span
                   key={p.id}
                   className="rounded-lg bg-muted px-2 py-1 text-xs font-medium"

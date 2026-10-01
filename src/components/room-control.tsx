@@ -875,6 +875,7 @@ function QuestionComposer({
 
   const [bankQuestions, setBankQuestions] = useState<BankQuestion[]>([]);
   const [selectedSetFilter, setSelectedSetFilter] = useState<string>("all");
+  const [currentSetIndex, setCurrentSetIndex] = useState<number>(0);
 
   useEffect(() => {
     if (!open) return;
@@ -924,6 +925,13 @@ function QuestionComposer({
     if (q.timer_seconds) setTimer(q.timer_seconds);
     if (q.difficulty) setDifficulty(q.difficulty);
     toast.success("Loaded question from bank");
+  }
+
+  function handleLaunchNextInSet() {
+    if (filteredBankQuestions.length === 0) return;
+    const nextQ = filteredBankQuestions[currentSetIndex % filteredBankQuestions.length];
+    pickFromBank(nextQ);
+    setCurrentSetIndex((prev) => (prev + 1) % filteredBankQuestions.length);
   }
 
   // true_false and exit_ticket present a fixed, non-editable option shelf.
@@ -1009,19 +1017,32 @@ function QuestionComposer({
                 Pick from Question Bank
               </Label>
               {availableSets.length > 0 && (
-                <Select value={selectedSetFilter} onValueChange={(val) => setSelectedSetFilter(val ?? "all")}>
-                  <SelectTrigger className="h-7 w-[160px] text-xs">
-                    <SelectValue placeholder="Filter by Set" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Sets / Questions</SelectItem>
-                    {availableSets.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        Set: {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={selectedSetFilter}
+                    onValueChange={(val) => {
+                      setSelectedSetFilter(val ?? "all");
+                      setCurrentSetIndex(0);
+                    }}
+                  >
+                    <SelectTrigger className="h-7 w-[160px] text-xs">
+                      <SelectValue placeholder="Filter by Set" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sets / Questions</SelectItem>
+                      {availableSets.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          Set: {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedSetFilter !== "all" && (
+                    <Button size="xs" variant="secondary" onClick={handleLaunchNextInSet}>
+                      Load Next in Set ⏭
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
             <Select onValueChange={(qId) => {
@@ -1140,16 +1161,55 @@ function QuestionComposer({
         )}
 
         <div className="grid grid-cols-3 gap-3">
-          <div className="grid gap-2">
-            <Label>Custom Timer (sec)</Label>
-            <Input
-              type="number"
-              min={5}
-              max={3600}
-              value={timer}
-              onChange={(e) => setTimer(Math.max(1, Number(e.target.value)))}
-              placeholder="e.g. 60"
-            />
+          <div className="grid gap-2 col-span-2">
+            <Label>Timer Duration</Label>
+            <div className="flex gap-2 items-center">
+              <div className="flex-1">
+                <span className="text-[10px] text-muted-foreground block">Hours</span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={24}
+                  value={Math.floor(timer / 3600)}
+                  onChange={(e) => {
+                    const hrs = Math.max(0, Number(e.target.value));
+                    const mins = Math.floor((timer % 3600) / 60);
+                    const secs = timer % 60;
+                    setTimer(hrs * 3600 + mins * 60 + secs);
+                  }}
+                />
+              </div>
+              <div className="flex-1">
+                <span className="text-[10px] text-muted-foreground block">Mins</span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={Math.floor((timer % 3600) / 60)}
+                  onChange={(e) => {
+                    const hrs = Math.floor(timer / 3600);
+                    const mins = Math.max(0, Number(e.target.value));
+                    const secs = timer % 60;
+                    setTimer(hrs * 3600 + mins * 60 + secs);
+                  }}
+                />
+              </div>
+              <div className="flex-1">
+                <span className="text-[10px] text-muted-foreground block">Secs</span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={timer % 60}
+                  onChange={(e) => {
+                    const hrs = Math.floor(timer / 3600);
+                    const mins = Math.floor((timer % 3600) / 60);
+                    const secs = Math.max(0, Number(e.target.value));
+                    setTimer(hrs * 3600 + mins * 60 + secs);
+                  }}
+                />
+              </div>
+            </div>
           </div>
           <div className="grid gap-2">
             <Label>Difficulty</Label>
