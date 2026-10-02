@@ -30,6 +30,7 @@ import { saveLastRoom } from "@/lib/session";
 import { DIFFICULTIES, QUICK_TEMPLATES } from "@/lib/game";
 import type { Difficulty, SessionSummary } from "@/lib/types";
 import { PodiumView } from "@/components/podium-view";
+import { ReportCard } from "@/components/report-card";
 import { toast } from "sonner";
 import {
   Plus,
@@ -39,8 +40,8 @@ import {
   Loader2,
   Clock,
   BarChart3,
-  CheckCircle2,
-  XCircle,
+  Monitor,
+  Radio,
 } from "lucide-react";
 
 interface QuestionRow {
@@ -274,6 +275,32 @@ export function Dashboard() {
                       {r.rounds_total} question{r.rounds_total === 1 ? "" : "s"} launched
                     </p>
                   </div>
+                  {/* Live rooms stay reachable from here — a teacher who has
+                      left the admin screen still needs a way back into the room,
+                      and the projector needs a link to open display mode in its
+                      own browser. */}
+                  {(r.status === "lobby" || r.status === "active") && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        size="xs"
+                        asChild
+                        className="bg-[var(--ember)] text-white hover:bg-[var(--ember)]/90"
+                      >
+                        <Link href={`/room/${r.code}`}>
+                          <Radio className="size-3" /> Live room
+                        </Link>
+                      </Button>
+                      <Button variant="outline" size="xs" asChild>
+                        <Link
+                          href={`/room/${r.code}/display`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <Monitor className="size-3" /> Display mode
+                        </Link>
+                      </Button>
+                    </div>
+                  )}
                   <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-2">
                     <span className="text-[10px] text-muted-foreground">
                       {new Date(r.created_at).toLocaleDateString()} at{" "}
@@ -447,49 +474,17 @@ export function Dashboard() {
                 </div>
               )}
 
-              {/* Detailed Student Progress & Score Breakdown */}
+              {/* Full session report card — every student who joined, not just
+                  the leaderboard's top ten (which also drops anyone with zero
+                  correct answers). */}
               <div>
                 <p className="mb-2 text-xs font-bold tracking-widest text-muted-foreground uppercase">
-                  Student Performance &amp; Accuracy Breakdown
+                  Student Performance
                 </p>
-                <ul className="grid gap-2 max-h-[300px] overflow-y-auto pr-1">
-                  {historySummary.leaderboard.map((student) => {
-                    const wrongCount = Math.max(0, student.answered_count - student.correct_count);
-                    const accuracyPct = student.answered_count > 0 ? Math.round((student.correct_count / student.answered_count) * 100) : 0;
-                    return (
-                      <li key={student.id} className="rounded-xl border border-border bg-card p-3 flex flex-col gap-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-display font-bold text-sm truncate">{student.nickname}</span>
-                            <span className="text-xs font-semibold text-[var(--primary)] tabular-nums">{student.xp} XP</span>
-                          </div>
-                          <div className="flex items-center gap-3 text-xs font-semibold tabular-nums">
-                            <span className="text-[var(--success)] flex items-center gap-1">
-                              <CheckCircle2 className="size-3.5" /> {student.correct_count} correct
-                            </span>
-                            <span className="text-muted-foreground flex items-center gap-1">
-                              <XCircle className="size-3.5 text-destructive" /> {wrongCount} wrong
-                            </span>
-                            <span className="font-bold">{student.correct_count}/{historySummary.questions} solved</span>
-                          </div>
-                        </div>
-
-                        {/* Progress Status Bar */}
-                        <div className="flex items-center gap-2">
-                          <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                            <div
-                              className="absolute inset-y-0 left-0 bg-[var(--success)] transition-all"
-                              style={{ width: `${accuracyPct}%` }}
-                            />
-                          </div>
-                          <span className="text-[11px] font-bold tabular-nums text-muted-foreground w-10 text-right">
-                            {accuracyPct}%
-                          </span>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <ReportCard
+                  rows={historySummary.report}
+                  questions={historySummary.questions}
+                />
               </div>
             </div>
           )}

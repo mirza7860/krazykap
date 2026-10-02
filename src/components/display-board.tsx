@@ -9,6 +9,7 @@ import { TimerRing } from "@/components/timer-ring";
 import { RoomQr } from "@/components/room-qr";
 import { QuestionLeaderboard } from "@/components/question-leaderboard";
 import { FinalResults } from "@/components/final-results";
+import { primeCelebrationAudio } from "@/lib/confetti";
 import { useTeacherRoom } from "@/lib/use-teacher-room";
 import { useRoomChannel } from "@/lib/use-room-channel";
 import { useCountdown } from "@/lib/use-countdown";
@@ -37,6 +38,12 @@ const emptySubscribe = () => () => {};
 export function DisplayBoard({ code }: { code: string }) {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
+
+  // The projector is a passive screen — nobody clicks it — so the audio
+  // unlock listener has to be waiting long before the fanfare wants to play.
+  useEffect(() => {
+    primeCelebrationAudio();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -182,6 +189,7 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
           <FinalResults
             leaderboard={state.summary?.leaderboard ?? state.leaderboard ?? []}
             max={20}
+            celebrate
           />
         </div>
       </Shell>

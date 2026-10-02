@@ -156,6 +156,26 @@ export interface SessionSummary {
   total_responses: number;
   hardest: { prompt: string; accuracy: number; wrong_answer: unknown } | null;
   leaderboard: LeaderboardRow[];
+  /**
+   * Per-student report card covering EVERYONE who joined — unlike
+   * `leaderboard`, which stops at ten rows and drops anyone with zero correct
+   * answers. Absent on responses cached before the schema was re-run.
+   */
+  report?: StudentReportRow[];
+}
+
+/**
+ * One row of the session report card produced by `get_session_summary`:
+ * what a student answered, got right, got wrong and never attempted.
+ */
+export interface StudentReportRow {
+  id: string;
+  nickname: string;
+  xp: number;
+  answered: number;
+  correct: number;
+  wrong: number;
+  unattempted: number;
 }
 
 export interface TeacherState {

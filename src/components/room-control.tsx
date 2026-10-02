@@ -10,7 +10,7 @@ import { TimerRing } from "@/components/timer-ring";
 import { Leaderboard } from "@/components/leaderboard";
 import { QuestionLeaderboard } from "@/components/question-leaderboard";
 import { FinalResults } from "@/components/final-results";
-import { PodiumView } from "@/components/podium-view";
+import { ReportCard, summaryWithReport } from "@/components/report-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,6 @@ import { useTeacherRoom } from "@/lib/use-teacher-room";
 import { useRoomChannel } from "@/lib/use-room-channel";
 import { useCountdown } from "@/lib/use-countdown";
 import {
-  closeActivity,
   closeRoom,
   launchActivity,
   pauseTimer,
@@ -70,7 +69,6 @@ import {
   Eye,
   EyeOff,
   Trophy,
-  Flag,
   Users,
   Loader2,
   CheckCircle2,
@@ -164,7 +162,7 @@ export function RoomControl({ code }: { code: string }) {
         participantCount={state?.participants.length ?? 0}
         status={state?.room.status ?? "lobby"}
         expiresAt={state?.room.expires_at ?? null}
-        summary={state?.summary ?? null}
+        summary={summaryWithReport(state?.summary ?? null, state?.participants ?? [])}
         summaryOpen={summaryOpen}
         onSummaryOpenChange={setSummaryOpen}
         resultsRevealed={alreadyRevealed}
@@ -375,9 +373,13 @@ function RoomBody({
   const activity = state.activity;
   const [composerOpen, setComposerOpen] = useState(false);
 
-  const [quickSetQuestions, setQuickSetQuestions] = useState<BankQuestion[]>([]);
-  const [quickSetFilter, setQuickSetFilter] = useState<string>("all");
-  const [quickSetIndex, setQuickSetIndex] = useState<number>(0);
+  // The question bank and the "next in set" cursor live here rather than in
+  // the composer. Both entry points — the lobby modal and the bar — therefore
+  // advance one shared pointer, which is what stops the bar from re-serving
+  // question 1 of the set you have already opened with.
+  const [bankQuestions, setBankQuestions] = useState<BankQuestion[]>([]);
+  const [activeSet, setActiveSet] = useState<string>("all");
+  const [setCursor, setSetCursor] = useState<number>(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -390,30 +392,48 @@ function RoomBody({
         .order("created_at", { ascending: false })
         .limit(50);
       if (cancelled) return;
-      if (data) setQuickSetQuestions(data as BankQuestion[]);
+      if (data) setBankQuestions(data as BankQuestion[]);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const quickAvailableSets = useMemo(() => {
+  const availableSets = useMemo(() => {
     const sets = new Set<string>();
-    quickSetQuestions.forEach((bq) => {
+    bankQuestions.forEach((bq) => {
       if (bq.set_name) sets.add(bq.set_name);
     });
     return Array.from(sets);
-  }, [quickSetQuestions]);
+  }, [bankQuestions]);
 
-  const quickFilteredQuestions = useMemo(() => {
-    if (quickSetFilter === "all") return quickSetQuestions;
-    return quickSetQuestions.filter((bq) => bq.set_name === quickSetFilter);
-  }, [quickSetQuestions, quickSetFilter]);
+  const setQuestions = useMemo(
+    () =>
+      activeSet === "all"
+        ? bankQuestions
+        : bankQuestions.filter((bq) => bq.set_name === activeSet),
+    [bankQuestions, activeSet],
+  );
+
+  function handleSetChange(next: string) {
+    setActiveSet(next);
+    setSetCursor(0);
+  }
+
+  /**
+   * The composer just launched a bank question. Park the cursor one past it so
+   * "Launch Next in Set" continues the paper rather than replaying its head.
+   */
+  function handleBankLaunch(setName: string, nextCursor: number) {
+    setActiveSet(setName);
+    setSetCursor(nextCursor);
+  }
 
   async function handleQuickLaunchNextInSet() {
-    if (quickFilteredQuestions.length === 0) return;
-    const q = quickFilteredQuestions[quickSetIndex % quickFilteredQuestions.length];
-    setQuickSetIndex((prev) => (prev + 1) % quickFilteredQuestions.length);
+    if (setQuestions.length === 0) return;
+    const idx = setCursor % setQuestions.length;
+    const q = setQuestions[idx];
+    setSetCursor(idx + 1);
 
     let clean = q.options?.map((o) => o.trim()).filter(Boolean) || [];
     let correct: (string | number)[] = [typeof q.correct_answer?.[0] === "number" ? q.correct_answer[0] : 0];
@@ -472,25 +492,27 @@ function RoomBody({
               <Plus className="size-4" /> New question
             </Button>
 
-            {quickAvailableSets.length > 0 && (
+            {bankQuestions.length > 0 && (
               <div className="flex items-center gap-2 ml-auto">
                 <span className="text-xs font-bold text-muted-foreground uppercase">Active Set:</span>
-                <Select value={quickSetFilter} onValueChange={(v) => {
-                  setQuickSetFilter(v ?? "all");
-                  setQuickSetIndex(0);
-                }}>
+                <Select value={activeSet} onValueChange={(v) => handleSetChange(v ?? "all")}>
                   <SelectTrigger className="h-10 w-[180px] text-xs">
                     <SelectValue placeholder="Select Question Set" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Questions</SelectItem>
-                    {quickAvailableSets.map((s) => (
+                    {availableSets.map((s) => (
                       <SelectItem key={s} value={s}>
                         Set: {s}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {setQuestions.length > 0 && (
+                  <span className="text-[10px] font-bold text-muted-foreground tabular-nums">
+                    Next {((setCursor % setQuestions.length) + 1)}/{setQuestions.length}
+                  </span>
+                )}
                 <Button size="lg" variant="secondary" onClick={() => void handleQuickLaunchNextInSet()} className="bg-[var(--ember)] text-white hover:bg-[var(--ember)]/90">
                   <Rocket className="size-4" /> Launch Next in Set ⏭
                 </Button>
@@ -612,6 +634,13 @@ function RoomBody({
         open={composerOpen}
         onOpenChange={setComposerOpen}
         roomId={roomId}
+        bankQuestions={bankQuestions}
+        setQuestions={setQuestions}
+        availableSets={availableSets}
+        activeSet={activeSet}
+        setCursor={setCursor}
+        onSetChange={handleSetChange}
+        onBankLaunch={handleBankLaunch}
         onLaunched={() => {
           setComposerOpen(false);
           emit("launched");
@@ -885,26 +914,17 @@ function ActiveQuestionCard({
             </Button>
           )}
 
-          {(a.state === "revealed" || a.state === "distribution") && (
+          {a.state === "revealed" && (
             <Button size="lg" disabled={busy} onClick={() => void go("leaderboard")}>
               <Trophy className="size-4" /> Show question leaderboard
             </Button>
           )}
 
-          <Button
-            variant="outline"
-            size="lg"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              const { error } = await closeActivity(roomId);
-              setBusy(false);
-              if (error) return toast.error(error);
-              onChange();
-            }}
-          >
-            <Flag className="size-4" /> Skip question
-          </Button>
+          {a.state === "leaderboard" && (
+            <p className="w-full text-xs text-muted-foreground">
+              That&apos;s this question done — launch the next one from the bar below.
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -1003,11 +1023,25 @@ function QuestionComposer({
   open,
   onOpenChange,
   roomId,
+  bankQuestions,
+  setQuestions,
+  availableSets,
+  activeSet,
+  setCursor,
+  onSetChange,
+  onBankLaunch,
   onLaunched,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   roomId: string;
+  bankQuestions: BankQuestion[];
+  setQuestions: BankQuestion[];
+  availableSets: string[];
+  activeSet: string;
+  setCursor: number;
+  onSetChange: (next: string) => void;
+  onBankLaunch: (setName: string, nextCursor: number) => void;
   onLaunched: () => void;
 }) {
   const [prompt, setPrompt] = useState("");
@@ -1022,41 +1056,14 @@ function QuestionComposer({
   const [topic, setTopic] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const [bankQuestions, setBankQuestions] = useState<BankQuestion[]>([]);
-  const [selectedSetFilter, setSelectedSetFilter] = useState<string>("all");
-  const [currentSetIndex, setCurrentSetIndex] = useState<number>(0);
+  // Which paper question is loaded into the form, tracked by id so a launch
+  // can work out where it sits in its set even if the filter changed since.
+  const [pickedId, setPickedId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    void (async () => {
-      const { createClient } = await import("@/lib/client");
-      const sb = createClient();
-      const { data } = await sb
-        .from("questions")
-        .select("id,prompt,type,options,correct_answer,explanation,timer_seconds,difficulty,set_name")
-        .order("created_at", { ascending: false })
-        .limit(50);
-      if (cancelled) return;
-      if (data) setBankQuestions(data as BankQuestion[]);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
-
-  const availableSets = useMemo(() => {
-    const sets = new Set<string>();
-    bankQuestions.forEach((bq) => {
-      if (bq.set_name) sets.add(bq.set_name);
-    });
-    return Array.from(sets);
-  }, [bankQuestions]);
-
-  const filteredBankQuestions = useMemo(() => {
-    if (selectedSetFilter === "all") return bankQuestions;
-    return bankQuestions.filter((bq) => bq.set_name === selectedSetFilter);
-  }, [bankQuestions, selectedSetFilter]);
+  function handleSetSelect(next: string) {
+    onSetChange(next);
+    setPickedId(null);
+  }
 
   function pickFromBank(q: BankQuestion) {
     setPrompt(q.prompt);
@@ -1073,14 +1080,18 @@ function QuestionComposer({
     if (q.explanation) setExplanation(q.explanation);
     if (q.timer_seconds) setTimer(q.timer_seconds);
     if (q.difficulty) setDifficulty(q.difficulty);
+    setPickedId(q.id);
     toast.success("Loaded question from bank");
   }
 
-  function handleLaunchNextInSet() {
-    if (filteredBankQuestions.length === 0) return;
-    const nextQ = filteredBankQuestions[currentSetIndex % filteredBankQuestions.length];
-    pickFromBank(nextQ);
-    setCurrentSetIndex((prev) => (prev + 1) % filteredBankQuestions.length);
+  /**
+   * Load the question the bar's "Launch Next in Set" would have fired. Reading
+   * the shared cursor instead of keeping a private cycle means the preview can
+   * never offer a question the class has already seen.
+   */
+  function handleLoadNextInSet() {
+    if (setQuestions.length === 0) return;
+    pickFromBank(setQuestions[setCursor % setQuestions.length]);
   }
 
   // true_false and exit_ticket present a fixed, non-editable option shelf.
@@ -1139,7 +1150,25 @@ function QuestionComposer({
     setBusy(false);
 
     if (error) return toast.error(error);
+
+    // Hand the "next in set" cursor over to the room. If the question came
+    // from the bank, park it one past that question so the bar continues the
+    // paper — without this it restarts at the head and replays question 1.
+    if (pickedId) {
+      const picked = bankQuestions.find((b) => b.id === pickedId);
+      if (picked) {
+        const setName = picked.set_name ?? "all";
+        const list =
+          setName === "all"
+            ? bankQuestions
+            : bankQuestions.filter((b) => b.set_name === setName);
+        const idx = list.findIndex((b) => b.id === pickedId);
+        onBankLaunch(setName, idx >= 0 ? idx + 1 : 0);
+      }
+    }
+
     toast.success("Question launched");
+    setPickedId(null);
     setPrompt("");
     setExplanation("");
     onLaunched();
@@ -1161,56 +1190,67 @@ function QuestionComposer({
 
         {bankQuestions.length > 0 && (
           <div className="grid gap-2 border-b border-border pb-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <Label className="text-xs font-bold text-[var(--primary)] uppercase tracking-wide">
-                Pick from Question Bank
+                Question paper
               </Label>
-              {availableSets.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={selectedSetFilter}
-                    onValueChange={(val) => {
-                      setSelectedSetFilter(val ?? "all");
-                      setCurrentSetIndex(0);
-                    }}
-                  >
-                    <SelectTrigger className="h-7 w-[160px] text-xs">
-                      <SelectValue placeholder="Filter by Set" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Sets / Questions</SelectItem>
-                      {availableSets.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          Set: {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {selectedSetFilter !== "all" && (
-                    <Button size="xs" variant="secondary" onClick={handleLaunchNextInSet}>
-                      Load Next in Set ⏭
-                    </Button>
-                  )}
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                <Select value={activeSet} onValueChange={(val) => handleSetSelect(val ?? "all")}>
+                  <SelectTrigger className="h-7 w-[150px] text-xs">
+                    <SelectValue placeholder="Filter by Set" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Questions</SelectItem>
+                    {availableSets.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        Set: {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button size="xs" variant="secondary" onClick={handleLoadNextInSet}>
+                  Load next ⏭
+                </Button>
+              </div>
             </div>
-            <Select onValueChange={(qId) => {
-              const selected = bankQuestions.find(bq => bq.id === qId);
-              if (selected) pickFromBank(selected);
-            }}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select a saved question..." />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredBankQuestions.map((q) => (
-                  <SelectItem key={q.id} value={q.id}>
-                    <span className="truncate max-w-[320px] inline-block">
-                      {q.set_name ? `[${q.set_name}] ` : ""}{q.prompt}
+
+            <p className="text-xs text-muted-foreground">
+              {setQuestions.length} question{setQuestions.length === 1 ? "" : "s"}
+              {activeSet === "all" ? " in your bank" : ` in “${activeSet}”`}
+              {pickedId && " · pick another row to swap it out"}
+            </p>
+
+            <ol className="max-h-[190px] space-y-1 overflow-y-auto rounded-xl border border-border bg-muted/30 p-1.5">
+              {setQuestions.map((q, i) => (
+                <li key={q.id}>
+                  <button
+                    type="button"
+                    onClick={() => pickFromBank(q)}
+                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${
+                      pickedId === q.id
+                        ? "bg-[var(--ember)]/12 ring-1 ring-[var(--ember)]/50"
+                        : "hover:bg-card"
+                    }`}
+                  >
+                    <span className="grid size-5 shrink-0 place-items-center rounded-md bg-muted text-[10px] font-bold text-muted-foreground tabular-nums">
+                      {i + 1}
                     </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                    <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                      {q.prompt}
+                    </span>
+                    <span className="shrink-0 text-[10px] font-semibold text-muted-foreground uppercase">
+                      {q.type.replace("_", " ")}
+                    </span>
+                  </button>
+                </li>
+              ))}
+              {setQuestions.length === 0 && (
+                <li className="px-2 py-5 text-center text-xs text-muted-foreground">
+                  No questions in this set yet — set a different one above, or write
+                  a fresh question below.
+                </li>
+              )}
+            </ol>
           </div>
         )}
 
@@ -1488,19 +1528,7 @@ function SummaryDialog({
               </div>
             )}
 
-            <div>
-              <p className="mb-2 text-xs font-bold tracking-widest text-muted-foreground uppercase">
-                Top 3 Podium
-              </p>
-              <PodiumView leaderboard={summary.leaderboard} />
-            </div>
-
-            <div>
-              <p className="mb-2 text-xs font-bold tracking-widest text-muted-foreground uppercase">
-                Final leaderboard
-              </p>
-              <Leaderboard rows={summary.leaderboard} max={10} />
-            </div>
+            <ReportCard rows={summary.report} questions={summary.questions} />
 
             <p className="text-center text-xs text-muted-foreground">
               {summary.total_responses} answers scored on the server. Temporary room

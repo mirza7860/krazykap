@@ -1041,8 +1041,13 @@ language plpgsql
 security definer
 set search_path = ''
 as $fn$
-declare v_result jsonb;
+declare
+  v_result jsonb;
+  v_qtotal integer;
 begin
+  select count(*)::int into v_qtotal
+    from public.activities where room_id = p_room_id;
+
   select jsonb_build_object(
     'students',      (select count(*) from public.participants where room_id = p_room_id),
     'questions',     (select count(*) from public.activities where room_id = p_room_id),
@@ -1072,7 +1077,30 @@ begin
         join public.activities a on a.id = agg.activity_id
       limit 1
     ),
-    'leaderboard', public.leaderboard(p_room_id, 'xp', 10)
+    'leaderboard', public.leaderboard(p_room_id, 'xp', 10),
+    -- Session report card: EVERY participant, including the ones the
+    -- leaderboard above omits (it caps at ten and drops `correct_count = 0`).
+    -- A roll call has to list the whole room, not just the winners.
+    'report', coalesce((
+      select jsonb_agg(x order by xp desc, correct desc, nickname asc, id asc)
+        from (
+          select jsonb_build_object(
+                   'id',          p.id,
+                   'nickname',    p.nickname,
+                   'xp',          p.xp,
+                   'answered',    p.answered_count,
+                   'correct',     p.correct_count,
+                   'wrong',       greatest(p.answered_count - p.correct_count, 0),
+                   'unattempted', greatest(v_qtotal - p.answered_count, 0)
+                 ) as x,
+                 p.xp,
+                 p.nickname,
+                 p.id,
+                 p.correct_count as correct
+            from public.participants p
+           where p.room_id = p_room_id
+        ) t
+    ), '[]'::jsonb)
   ) into v_result;
 
   return coalesce(v_result, '{}'::jsonb);

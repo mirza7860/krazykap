@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { Leaderboard } from "@/components/leaderboard";
 import { PodiumView } from "@/components/podium-view";
-import { fireCelebration } from "@/lib/confetti";
+import { fireCelebration, playCelebrationSound } from "@/lib/confetti";
 import type { LeaderboardRow } from "@/lib/types";
 
 /**
@@ -13,11 +13,13 @@ import type { LeaderboardRow } from "@/lib/types";
  * during the lesson every screen ranks per question instead. Shared by the
  * teacher's "Final results" dialog and the projector.
  *
- * @param celebrate fire the confetti burst on mount (skip for re-renders).
+ * @param celebrate play the confetti burst and fanfare on mount. Off by
+ * default: the show is for the projector, not for the teacher's laptop, so
+ * the dialog opts out and only the smartboard celebrates.
  */
 export function FinalResults({
   leaderboard,
-  celebrate = true,
+  celebrate = false,
   max = 10,
 }: {
   leaderboard: LeaderboardRow[];
@@ -25,7 +27,9 @@ export function FinalResults({
   max?: number;
 }) {
   useEffect(() => {
-    if (celebrate) fireCelebration();
+    if (!celebrate) return;
+    fireCelebration();
+    playCelebrationSound();
   }, [celebrate]);
 
   if (!leaderboard || leaderboard.length === 0) {

@@ -62,8 +62,12 @@ Open [http://localhost:3000](http://localhost:3000).
    unambiguous alphabet (no `0/O`, no `1/I/L`) and closes any previous room.
 2. Students **join** → `join_room()` mints a 48-char token, stores only its
    SHA-256, and flips the room from `lobby` to `active`.
-3. Teacher **launches** → `launch_activity()` closes any open question, starts
-   the clock, and pushes a broadcast so every phone wakes up.
+3. Teacher **launches** → the launch modal opens straight to the **question
+   paper**: pick a set, then pick a specific question (or write a fresh one).
+   `launch_activity()` closes any open question, starts the clock, and pushes a
+   broadcast so every phone wakes up. The **Active Set / Launch Next in Set**
+   bar then takes over and continues *after* the question you just launched —
+   it never serves the head of the set twice.
 4. Students **submit** → `submit_answer()` locks the participant row, grades on
    the server, and applies:
    - **100** base points for correct
@@ -71,13 +75,24 @@ Open [http://localhost:3000](http://localhost:3000).
    - streak milestones **3 → +20**, **5 → +50**, **10 → +100**
 5. Teacher **shows the split** (`distribution`) — aggregate bars only, nobody's
    answer is exposed — then **reveals**, then the **per-question leaderboard**.
-   That board ranks only the students who answered *this* question, by the XP
-   they earned on it (`public.question_leaderboard`). Room-wide standings stay
-   on the teacher's screen throughout the lesson.
+   That is the whole control bar: *Show responses → Reveal answer → Show
+   question leaderboard* (there is no skip button). That board ranks only the
+   students who answered *this* question, by the XP they earned on it
+   (`public.question_leaderboard`). Room-wide standings stay on the teacher's
+   screen throughout the lesson.
 6. Teacher **ends the class** with **Final results** — the top-3 podium and the
-   session leaderboard appear on the teacher's screen and the projector, with a
-   confetti burst. Launching the next question clears the flag again.
-7. **End class** closes the room and lands on the session summary.
+   session leaderboard appear on the teacher's screen and on the projector.
+   Only the projector celebrates: it fires a confetti burst (which honours
+   `prefers-reduced-motion`) plus a short generated fanfare. Launching the
+   next question clears the flag again.
+7. **End class** closes the room and lands on the session summary — a
+   **report card covering every student who joined**, not just the leaderboard's
+   top ten: answered, correct, wrong, unattempted and XP, straight from
+   `get_session_summary`. The same card is in the dashboard's room history.
+
+Rooms that are still `lobby` or `active` keep **Live room** and **Display
+mode** buttons on the dashboard, so a teacher who has left the admin screen can
+get back in and can open the smartboard mirror on the projector's own browser.
 
 Realtime is split deliberately: students hold no table privileges, so they use
 **Broadcast + Presence** on `room:{id}` carrying only "refetch" signals; the
