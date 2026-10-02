@@ -534,7 +534,25 @@ begin
     values (v_room.id, v_nickname, public.hash_token(v_token))
     returning id into v_pid;
   exception when unique_violation then
-    raise exception 'nickname_taken' using errcode = '23505';
+    -- The name is already taken. If its owner is still in the room keep the
+    -- old behaviour; if they have gone quiet — the same window that drops
+    -- them from every roster — hand the seat back instead. The row, their XP
+    -- and all of their answers survive; only the session changes, so the old
+    -- token stops working and they must join by name again.
+    select id into v_pid
+      from public.participants
+     where room_id = v_room.id and lower(nickname) = lower(v_nickname);
+
+    update public.participants
+       set session_token_hash = public.hash_token(v_token),
+           last_seen = now()
+     where v_pid is not null
+       and id = v_pid
+       and last_seen < now() - interval '45 seconds';
+
+    if v_pid is null or not found then
+      raise exception 'nickname_taken' using errcode = '23505';
+    end if;
   end;
 
   update public.rooms set status = 'active' where id = v_room.id and status = 'lobby';
@@ -547,6 +565,28 @@ begin
     'room_title', v_room.title,
     'nickname', v_nickname
   );
+end;
+$fn$;
+
+-- Fired by a student's own tab as the page dies (the browser's `pagehide`,
+-- sent with `keepalive` so it outlives the unload). It only ever touches the
+-- caller's own seat — the token decides which one that is.
+--
+-- Pushing `last_seen` into the past does two jobs at once: every roster drops
+-- them on the next fetch instead of waiting out the disconnect window, and
+-- their saved session stops resolving in get_room_state, so coming back means
+-- joining again with their name. The row itself — XP, streaks, every answer —
+-- is left alone; join_room hands the same seat back to the same name.
+create or replace function public.leave_room(p_token text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $fn$
+begin
+  update public.participants
+     set last_seen = now() - interval '1 hour'
+   where session_token_hash = public.hash_token(coalesce(p_token, ''));
 end;
 $fn$;
 
@@ -603,6 +643,7 @@ as $fn$
 declare
   v_pid     uuid;
   v_rid     uuid;
+  v_last    timestamptz;
   v_room    public.rooms%rowtype;
   v_act     public.activities%rowtype;
   v_resp    public.responses%rowtype;
@@ -616,11 +657,19 @@ declare
 begin
   perform public.expire_stale_rooms();
 
-  select id, room_id into v_pid, v_rid
+  select id, room_id, last_seen into v_pid, v_rid, v_last
     from public.participants
    where session_token_hash = public.hash_token(coalesce(p_token, ''));
 
   if v_pid is null then
+    raise exception 'invalid_session' using errcode = '28000';
+  end if;
+
+  -- A seat that has gone quiet is no longer theirs: they left the room
+  -- (tab closed, which fires leave_room and pushes `last_seen` back) or were
+  -- away long enough to drop off every roster. Their row, XP and answers are
+  -- untouched — rejoining by name hands the same seat back in join_room.
+  if v_last < v_now - interval '45 seconds' then
     raise exception 'invalid_session' using errcode = '28000';
   end if;
 
@@ -637,7 +686,9 @@ begin
      set last_seen = v_now
    where id = v_pid and last_seen < v_now - interval '10 seconds';
 
-  select count(*)::int into v_count from public.participants where room_id = v_rid;
+  select count(*)::int into v_count
+    from public.participants
+   where room_id = v_rid and last_seen > v_now - interval '45 seconds';
 
   select * into v_act
     from public.activities
@@ -737,7 +788,12 @@ begin
         'id', p.id, 'nickname', p.nickname, 'team', p.team, 'xp', p.xp,
         'connected', (p.last_seen > v_now - interval '45 seconds')
       ) order by p.joined_at)
-      from public.participants p where p.room_id = v_rid
+      -- "In the room" only lists who is actually still in the room. Anyone
+      -- who closed their tab is dropped here straight away and drops off the
+      -- 45s backstop if the browser never got to say goodbye.
+      from public.participants p
+     where p.room_id = v_rid
+       and p.last_seen > v_now - interval '45 seconds'
     ), '[]'::jsonb)
   );
 end;
@@ -1139,7 +1195,14 @@ begin
         'answered_this', exists (select 1 from public.responses r
                                   where r.participant_id = p.id and r.activity_id = v_act.id)
       ) order by p.xp desc, p.joined_at)
-      from public.participants p where p.room_id = p_room_id
+      -- The roster shows who is in the room right now. A student who closed
+      -- their tab stops being listed immediately (leave_room) or after the
+      -- same 45s window that marks them disconnected. The row, their answers
+      -- and their XP all stay put, so rejoining by name in join_room hands
+      -- the same seat back — this only decides who appears on screen.
+      from public.participants p
+     where p.room_id = p_room_id
+       and p.last_seen > now() - interval '45 seconds'
     ), '[]'::jsonb),
     'activity', case when v_act.id is null then null else jsonb_build_object(
       'id', v_act.id, 'seq', v_act.seq, 'type', v_act.type, 'prompt', v_act.prompt,
@@ -1530,7 +1593,7 @@ begin
      where n.nspname = 'public'
        and p.proname in (
          'create_room','close_room','expire_stale_rooms','gen_room_code',
-         'join_room','get_room_state','submit_answer','submit_challenge','set_confidence',
+         'join_room','leave_room','get_room_state','submit_answer','submit_challenge','set_confidence',
          'leaderboard','get_session_summary','get_teacher_state','launch_activity',
          'set_activity_state','close_activity','pause_timer','set_participant_team',
          'auto_assign_teams','decide_challenge','set_room_settings',
@@ -1550,6 +1613,8 @@ $g$;
 revoke execute on function public.question_leaderboard(uuid) from public, anon, authenticated;
 
 grant execute on function public.join_room(text, text) to anon, authenticated;
+-- A student may only ever resign their own seat; the token is what scopes it.
+grant execute on function public.leave_room(text) to anon, authenticated;
 grant execute on function public.get_room_state(text) to anon, authenticated;
 grant execute on function public.submit_answer(text, uuid, jsonb, integer) to anon, authenticated;
 grant execute on function public.submit_challenge(text, uuid, text) to anon, authenticated;

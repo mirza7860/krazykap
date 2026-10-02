@@ -77,6 +77,8 @@ import {
   Square,
   Radio,
   PartyPopper,
+  BookOpen,
+  X,
 } from "lucide-react";
 
 /** For values that never change during the session (there is nothing to subscribe to). */
@@ -372,11 +374,14 @@ function RoomBody({
 }) {
   const activity = state.activity;
   const [composerOpen, setComposerOpen] = useState(false);
+  // The question paper is a panel in the room, not a modal: pick a set, scroll
+  // the questions it holds, click one and it goes live.
+  const [paperOpen, setPaperOpen] = useState(false);
 
   // The question bank and the "next in set" cursor live here rather than in
-  // the composer. Both entry points — the lobby modal and the bar — therefore
-  // advance one shared pointer, which is what stops the bar from re-serving
-  // question 1 of the set you have already opened with.
+  // the paper or the bar. Both entry points therefore advance one shared
+  // pointer, which is what stops the bar from re-serving question 1 of a set
+  // you have already started.
   const [bankQuestions, setBankQuestions] = useState<BankQuestion[]>([]);
   const [activeSet, setActiveSet] = useState<string>("all");
   const [setCursor, setSetCursor] = useState<number>(0);
@@ -421,20 +426,11 @@ function RoomBody({
   }
 
   /**
-   * The composer just launched a bank question. Park the cursor one past it so
-   * "Launch Next in Set" continues the paper rather than replaying its head.
+   * Shared by both launch paths — the paper (click any question) and the bar
+   * ("Launch Next in Set"). Both park the cursor one past what went live, so
+   * the bar continues the paper instead of replaying its head.
    */
-  function handleBankLaunch(setName: string, nextCursor: number) {
-    setActiveSet(setName);
-    setSetCursor(nextCursor);
-  }
-
-  async function handleQuickLaunchNextInSet() {
-    if (setQuestions.length === 0) return;
-    const idx = setCursor % setQuestions.length;
-    const q = setQuestions[idx];
-    setSetCursor(idx + 1);
-
+  async function launchBankQuestion(q: BankQuestion, nextCursor: number, setName: string) {
     let clean = q.options?.map((o) => o.trim()).filter(Boolean) || [];
     let correct: (string | number)[] = [typeof q.correct_answer?.[0] === "number" ? q.correct_answer[0] : 0];
 
@@ -457,9 +453,35 @@ function RoomBody({
     });
 
     if (error) return toast.error(error);
+
+    setActiveSet(setName);
+    setSetCursor(nextCursor);
     toast.success(`Launched question from Set "${q.set_name || "Bank"}"!`);
     emit("launched");
     onChange();
+  }
+
+  async function handleQuickLaunchNextInSet() {
+    if (setQuestions.length === 0) return;
+    const idx = setCursor % setQuestions.length;
+    await launchBankQuestion(setQuestions[idx], idx + 1, activeSet);
+  }
+
+  /** Paper row click: straight to the class, no modal in between. */
+  async function handlePaperLaunch(q: BankQuestion) {
+    const setName = q.set_name ?? "all";
+    const list =
+      setName === "all"
+        ? bankQuestions
+        : bankQuestions.filter((b) => b.set_name === setName);
+    const idx = list.findIndex((b) => b.id === q.id);
+    await launchBankQuestion(q, idx >= 0 ? idx + 1 : 0, setName);
+  }
+
+  /** Lobby CTA: browse the paper when there is one, author a question otherwise. */
+  function handleLaunchFirst() {
+    if (bankQuestions.length > 0) setPaperOpen(true);
+    else setComposerOpen(true);
   }
 
   const answered = activity?.response_count ?? 0;
@@ -482,43 +504,59 @@ function RoomBody({
             code={code}
             title={state.room.title}
             participants={state.participants}
-            onLaunch={() => setComposerOpen(true)}
+            onLaunch={handleLaunchFirst}
           />
         )}
 
-        {activity && (
-          <div className="flex flex-wrap items-center gap-3 bg-card p-3 rounded-2xl border border-border">
-            <Button size="lg" onClick={() => setComposerOpen(true)}>
-              <Plus className="size-4" /> New question
-            </Button>
+        {/* Launch bar — visible in the lobby and mid-question alike, so the
+            paper is always one click away. */}
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card p-3">
+          <Button
+            size="lg"
+            variant={paperOpen ? "outline" : "default"}
+            onClick={() => { setPaperOpen(false); setComposerOpen(true); }}
+          >
+            <Plus className="size-4" /> New question
+          </Button>
 
-            {bankQuestions.length > 0 && (
-              <div className="flex items-center gap-2 ml-auto">
-                <span className="text-xs font-bold text-muted-foreground uppercase">Active Set:</span>
-                <Select value={activeSet} onValueChange={(v) => handleSetChange(v ?? "all")}>
-                  <SelectTrigger className="h-10 w-[180px] text-xs">
-                    <SelectValue placeholder="Select Question Set" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Questions</SelectItem>
-                    {availableSets.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        Set: {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {setQuestions.length > 0 && (
-                  <span className="text-[10px] font-bold text-muted-foreground tabular-nums">
-                    Next {((setCursor % setQuestions.length) + 1)}/{setQuestions.length}
-                  </span>
-                )}
-                <Button size="lg" variant="secondary" onClick={() => void handleQuickLaunchNextInSet()} className="bg-[var(--ember)] text-white hover:bg-[var(--ember)]/90">
-                  <Rocket className="size-4" /> Launch Next in Set ⏭
-                </Button>
-              </div>
-            )}
-          </div>
+          {bankQuestions.length > 0 && (
+            <Button
+              size="lg"
+              variant={paperOpen ? "default" : "outline"}
+              aria-expanded={paperOpen}
+              onClick={() => setPaperOpen((v) => !v)}
+            >
+              <BookOpen className="size-4" /> Question set
+            </Button>
+          )}
+
+          {activity && bankQuestions.length > 0 && (
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-muted-foreground uppercase">Active Set:</span>
+              <span className="text-xs font-semibold">
+                {activeSet === "all" ? "All Questions" : activeSet}
+              </span>
+              {setQuestions.length > 0 && (
+                <span className="text-[10px] font-bold text-muted-foreground tabular-nums">
+                  Next {((setCursor % setQuestions.length) + 1)}/{setQuestions.length}
+                </span>
+              )}
+              <Button size="lg" variant="secondary" onClick={() => void handleQuickLaunchNextInSet()} className="bg-[var(--ember)] text-white hover:bg-[var(--ember)]/90">
+                <Rocket className="size-4" /> Launch Next in Set ⏭
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {paperOpen && (
+          <QuestionPaperPanel
+            availableSets={availableSets}
+            activeSet={activeSet}
+            onSetChange={handleSetChange}
+            questions={setQuestions}
+            onLaunch={(q) => void handlePaperLaunch(q)}
+            onClose={() => setPaperOpen(false)}
+          />
         )}
 
         <SettingsCard
@@ -634,13 +672,6 @@ function RoomBody({
         open={composerOpen}
         onOpenChange={setComposerOpen}
         roomId={roomId}
-        bankQuestions={bankQuestions}
-        setQuestions={setQuestions}
-        availableSets={availableSets}
-        activeSet={activeSet}
-        setCursor={setCursor}
-        onSetChange={handleSetChange}
-        onBankLaunch={handleBankLaunch}
         onLaunched={() => {
           setComposerOpen(false);
           emit("launched");
@@ -648,6 +679,104 @@ function RoomBody({
         }}
       />
     </div>
+  );
+}
+
+/* ------------------------------------------------------- question paper --- */
+
+/**
+ * The room's own question paper: choose a set, scroll everything it holds and
+ * click a question to put it live. Deliberately not a modal — picking a set
+ * shouldn't stand between the teacher and the class.
+ */
+function QuestionPaperPanel({
+  availableSets,
+  activeSet,
+  onSetChange,
+  questions,
+  onLaunch,
+  onClose,
+}: {
+  availableSets: string[];
+  activeSet: string;
+  onSetChange: (next: string) => void;
+  questions: BankQuestion[];
+  onLaunch: (q: BankQuestion) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Card>
+      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+        <div className="min-w-0">
+          <CardTitle className="flex items-center gap-2 font-display text-base font-bold">
+            <BookOpen className="size-4 text-[var(--primary)]" /> Question paper
+          </CardTitle>
+          <CardDescription>
+            {questions.length} question{questions.length === 1 ? "" : "s"}
+            {activeSet === "all" ? " in your bank" : ` in “${activeSet}”`} — click one to
+            put it live
+          </CardDescription>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Select value={activeSet} onValueChange={(v) => onSetChange(v ?? "all")}>
+            <SelectTrigger className="h-8 w-[170px] text-xs">
+              <SelectValue placeholder="Set" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Questions</SelectItem>
+              {availableSets.map((s) => (
+                <SelectItem key={s} value={s}>
+                  Set: {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={onClose}
+            aria-label="Close question paper"
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <ol className="max-h-[340px] space-y-1.5 overflow-y-auto pr-1">
+          {questions.map((q, i) => (
+            <li key={q.id}>
+              <button
+                type="button"
+                onClick={() => onLaunch(q)}
+                className="group flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:border-[var(--ember)]/60 hover:bg-[var(--ember)]/6"
+              >
+                <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-muted text-[11px] font-bold text-muted-foreground tabular-nums">
+                  {i + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{q.prompt}</span>
+                  <span className="mt-0.5 block text-[10px] font-semibold text-muted-foreground uppercase">
+                    {[q.type.replace("_", " "), q.difficulty, `${q.timer_seconds || 30}s`, q.set_name]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-1 rounded-lg bg-muted px-2 py-1 text-[11px] font-bold text-muted-foreground transition-colors group-hover:bg-[var(--ember)]/12 group-hover:text-[var(--primary)]">
+                  <Rocket className="size-3" /> Launch
+                </span>
+              </button>
+            </li>
+          ))}
+          {questions.length === 0 && (
+            <li className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+              No questions in this set yet — pick another set above, or write one with{" "}
+              <span className="font-semibold text-foreground">New question</span>.
+            </li>
+          )}
+        </ol>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1023,25 +1152,11 @@ function QuestionComposer({
   open,
   onOpenChange,
   roomId,
-  bankQuestions,
-  setQuestions,
-  availableSets,
-  activeSet,
-  setCursor,
-  onSetChange,
-  onBankLaunch,
   onLaunched,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   roomId: string;
-  bankQuestions: BankQuestion[];
-  setQuestions: BankQuestion[];
-  availableSets: string[];
-  activeSet: string;
-  setCursor: number;
-  onSetChange: (next: string) => void;
-  onBankLaunch: (setName: string, nextCursor: number) => void;
   onLaunched: () => void;
 }) {
   const [prompt, setPrompt] = useState("");
@@ -1055,44 +1170,6 @@ function QuestionComposer({
   const [difficulty, setDifficulty] = useState<Difficulty>("Medium");
   const [topic, setTopic] = useState("");
   const [busy, setBusy] = useState(false);
-
-  // Which paper question is loaded into the form, tracked by id so a launch
-  // can work out where it sits in its set even if the filter changed since.
-  const [pickedId, setPickedId] = useState<string | null>(null);
-
-  function handleSetSelect(next: string) {
-    onSetChange(next);
-    setPickedId(null);
-  }
-
-  function pickFromBank(q: BankQuestion) {
-    setPrompt(q.prompt);
-    setType(q.type);
-    if (q.type === "numerical") {
-      setNumeric(String(q.correct_answer?.[0] ?? ""));
-      setTolerance(String(q.correct_answer?.[1] ?? "0"));
-    } else {
-      setOptions(q.options && q.options.length > 0 ? q.options : ["", "", "", ""]);
-      setCorrectIdx(
-        typeof q.correct_answer?.[0] === "number" ? (q.correct_answer[0] as number) : 0
-      );
-    }
-    if (q.explanation) setExplanation(q.explanation);
-    if (q.timer_seconds) setTimer(q.timer_seconds);
-    if (q.difficulty) setDifficulty(q.difficulty);
-    setPickedId(q.id);
-    toast.success("Loaded question from bank");
-  }
-
-  /**
-   * Load the question the bar's "Launch Next in Set" would have fired. Reading
-   * the shared cursor instead of keeping a private cycle means the preview can
-   * never offer a question the class has already seen.
-   */
-  function handleLoadNextInSet() {
-    if (setQuestions.length === 0) return;
-    pickFromBank(setQuestions[setCursor % setQuestions.length]);
-  }
 
   // true_false and exit_ticket present a fixed, non-editable option shelf.
   // The launch payload has to use it — the free-form `options` state is empty
@@ -1151,24 +1228,7 @@ function QuestionComposer({
 
     if (error) return toast.error(error);
 
-    // Hand the "next in set" cursor over to the room. If the question came
-    // from the bank, park it one past that question so the bar continues the
-    // paper — without this it restarts at the head and replays question 1.
-    if (pickedId) {
-      const picked = bankQuestions.find((b) => b.id === pickedId);
-      if (picked) {
-        const setName = picked.set_name ?? "all";
-        const list =
-          setName === "all"
-            ? bankQuestions
-            : bankQuestions.filter((b) => b.set_name === setName);
-        const idx = list.findIndex((b) => b.id === pickedId);
-        onBankLaunch(setName, idx >= 0 ? idx + 1 : 0);
-      }
-    }
-
     toast.success("Question launched");
-    setPickedId(null);
     setPrompt("");
     setExplanation("");
     onLaunched();
@@ -1181,78 +1241,14 @@ function QuestionComposer({
       <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="font-display text-lg font-extrabold">
-            Launch a question
+            Write your own question
           </DialogTitle>
           <DialogDescription>
-            Goes live on every connected phone the moment you press Launch.
+            Goes live on every connected phone the moment you press Launch. To teach
+            from a set instead, use <span className="font-semibold">Question set</span>{" "}
+            in the room.
           </DialogDescription>
         </DialogHeader>
-
-        {bankQuestions.length > 0 && (
-          <div className="grid gap-2 border-b border-border pb-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label className="text-xs font-bold text-[var(--primary)] uppercase tracking-wide">
-                Question paper
-              </Label>
-              <div className="flex items-center gap-2">
-                <Select value={activeSet} onValueChange={(val) => handleSetSelect(val ?? "all")}>
-                  <SelectTrigger className="h-7 w-[150px] text-xs">
-                    <SelectValue placeholder="Filter by Set" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Questions</SelectItem>
-                    {availableSets.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        Set: {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button size="xs" variant="secondary" onClick={handleLoadNextInSet}>
-                  Load next ⏭
-                </Button>
-              </div>
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              {setQuestions.length} question{setQuestions.length === 1 ? "" : "s"}
-              {activeSet === "all" ? " in your bank" : ` in “${activeSet}”`}
-              {pickedId && " · pick another row to swap it out"}
-            </p>
-
-            <ol className="max-h-[190px] space-y-1 overflow-y-auto rounded-xl border border-border bg-muted/30 p-1.5">
-              {setQuestions.map((q, i) => (
-                <li key={q.id}>
-                  <button
-                    type="button"
-                    onClick={() => pickFromBank(q)}
-                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${
-                      pickedId === q.id
-                        ? "bg-[var(--ember)]/12 ring-1 ring-[var(--ember)]/50"
-                        : "hover:bg-card"
-                    }`}
-                  >
-                    <span className="grid size-5 shrink-0 place-items-center rounded-md bg-muted text-[10px] font-bold text-muted-foreground tabular-nums">
-                      {i + 1}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                      {q.prompt}
-                    </span>
-                    <span className="shrink-0 text-[10px] font-semibold text-muted-foreground uppercase">
-                      {q.type.replace("_", " ")}
-                    </span>
-                  </button>
-                </li>
-              ))}
-              {setQuestions.length === 0 && (
-                <li className="px-2 py-5 text-center text-xs text-muted-foreground">
-                  No questions in this set yet — set a different one above, or write
-                  a fresh question below.
-                </li>
-              )}
-            </ol>
-          </div>
-        )}
 
         <div className="grid gap-2">
           <Label>Quick Challenge</Label>

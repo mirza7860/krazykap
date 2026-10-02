@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getRoomState } from "@/lib/rpc";
+import { announceLeave } from "@/lib/leave-room";
 import type { StudentState } from "@/lib/types";
 import { clearSession, loadSession, type StoredSession } from "@/lib/session";
 
@@ -96,6 +97,19 @@ export function useStudentRoom(roomCode: string) {
     if (!session) return;
     const id = window.setInterval(() => setTick((t) => t + 1), 4000);
     return () => window.clearInterval(id);
+  }, [session]);
+
+  /**
+   * Resign the seat as the tab dies. Doing it from the page itself is what
+   * makes "the student closed their tab" take effect immediately: the name
+   * comes off every roster at once, and their saved token stops resolving so
+   * coming back means joining again by name. Their XP and answers stay.
+   */
+  useEffect(() => {
+    if (!session) return;
+    const onPageHide = () => announceLeave(session.token);
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
   }, [session]);
 
   const adopt = useCallback((s: StoredSession) => {

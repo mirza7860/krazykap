@@ -62,12 +62,15 @@ Open [http://localhost:3000](http://localhost:3000).
    unambiguous alphabet (no `0/O`, no `1/I/L`) and closes any previous room.
 2. Students **join** → `join_room()` mints a 48-char token, stores only its
    SHA-256, and flips the room from `lobby` to `active`.
-3. Teacher **launches** → the launch modal opens straight to the **question
-   paper**: pick a set, then pick a specific question (or write a fresh one).
-   `launch_activity()` closes any open question, starts the clock, and pushes a
-   broadcast so every phone wakes up. The **Active Set / Launch Next in Set**
-   bar then takes over and continues *after* the question you just launched —
-   it never serves the head of the set twice.
+3. Teacher **launches** → the launch bar sits under the room, in the lobby as
+   well as mid-question, and offers an *either/or*: **New question** opens the
+   composer for something of their own, **Question set** opens the question
+   paper *in the room, not as a modal* — pick a set, scroll every question it
+   holds, click one and it goes live. `launch_activity()` closes any open
+   question, starts the clock, and pushes a broadcast so every phone wakes up.
+   The **Active Set / Launch Next in Set** bar then takes over and continues
+   *after* the question you just launched — it never serves the head of the
+   set twice.
 4. Students **submit** → `submit_answer()` locks the participant row, grades on
    the server, and applies:
    - **100** base points for correct
@@ -93,6 +96,14 @@ Open [http://localhost:3000](http://localhost:3000).
 Rooms that are still `lobby` or `active` keep **Live room** and **Display
 mode** buttons on the dashboard, so a teacher who has left the admin screen can
 get back in and can open the smartboard mirror on the projector's own browser.
+
+A student who **closes the tab is out of the room**: their own page calls
+`leave_room()` on the way out, so the name comes off every *In the room*
+roster immediately (and a 45-second staleness check in `get_room_state` takes
+the seat back when the browser never got to say goodbye). Their XP and every
+answer they submitted are **kept** — `join_room()` recognises a seat that has
+gone quiet and hands it back to whoever reuses that name, with a fresh session,
+so rejoining means entering the name again rather than starting from zero.
 
 Realtime is split deliberately: students hold no table privileges, so they use
 **Broadcast + Presence** on `room:{id}` carrying only "refetch" signals; the
