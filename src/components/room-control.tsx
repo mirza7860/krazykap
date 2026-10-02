@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardAction, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -706,18 +706,11 @@ function QuestionPaperPanel({
 }) {
   return (
     <Card>
-      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-        <div className="min-w-0">
-          <CardTitle className="flex items-center gap-2 font-display text-base font-bold">
-            <BookOpen className="size-4 text-[var(--primary)]" /> Question paper
-          </CardTitle>
-          <CardDescription>
-            {questions.length} question{questions.length === 1 ? "" : "s"}
-            {activeSet === "all" ? " in your bank" : ` in “${activeSet}”`} — click one to
-            put it live
-          </CardDescription>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 font-display text-base font-bold">
+          <BookOpen className="size-4 shrink-0 text-[var(--primary)]" /> Question paper
+        </CardTitle>
+        <CardAction className="flex items-center gap-2">
           <Select value={activeSet} onValueChange={(v) => onSetChange(v ?? "all")}>
             <SelectTrigger className="h-8 w-[170px] text-xs">
               <SelectValue placeholder="Set" />
@@ -740,7 +733,12 @@ function QuestionPaperPanel({
           >
             <X className="size-4" />
           </Button>
-        </div>
+        </CardAction>
+        <CardDescription>
+          {questions.length} question{questions.length === 1 ? "" : "s"}
+          {activeSet === "all" ? " in your bank" : ` in “${activeSet}”`} — click one to
+          put it live
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <ol className="max-h-[340px] space-y-1.5 overflow-y-auto pr-1">
@@ -748,6 +746,7 @@ function QuestionPaperPanel({
             <li key={q.id}>
               <button
                 type="button"
+                title={q.prompt}
                 onClick={() => onLaunch(q)}
                 className="group flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:border-[var(--ember)]/60 hover:bg-[var(--ember)]/6"
               >
@@ -757,7 +756,8 @@ function QuestionPaperPanel({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{q.prompt}</span>
                   <span className="mt-0.5 block text-[10px] font-semibold text-muted-foreground uppercase">
-                    {[q.type.replace("_", " "), q.difficulty, `${q.timer_seconds || 30}s`, q.set_name]
+                    {/* The set name only earns space when the paper mixes sets. */}
+                    {[q.type.replace("_", " "), q.difficulty, `${q.timer_seconds || 30}s`, activeSet === "all" ? q.set_name : null]
                       .filter(Boolean)
                       .join(" · ")}
                   </span>
