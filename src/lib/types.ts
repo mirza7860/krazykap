@@ -32,6 +32,12 @@ export interface RoomSettings {
   streaks_enabled?: boolean;
   allow_change?: boolean;
   teams_enabled?: boolean;
+  /**
+   * ISO timestamp of when the teacher pressed "Final results". Lives in the
+   * room's settings blob so every screen picks it up from the state RPCs it
+   * already fetches — no new column, no migration, no new realtime surface.
+   */
+  results_revealed_at?: string | null;
 }
 
 export interface Room {
@@ -109,6 +115,21 @@ export interface LeaderboardRow {
   score: number;
 }
 
+/**
+ * One row of the *per-question* board (public.question_leaderboard in
+ * schema.sql) — only students who actually answered this question appear,
+ * ranked by what they earned on it rather than by session-wide XP.
+ */
+export interface QuestionLeaderboardRow {
+  rank: number;
+  id: string;
+  nickname: string;
+  team: string | null;
+  xp: number;
+  is_correct: boolean;
+  reaction_ms: number | null;
+}
+
 export interface TeacherResponseRow {
   participant_id: string;
   nickname: string;
@@ -145,6 +166,8 @@ export interface TeacherState {
     options: string[];
     responses: TeacherResponseRow[];
     response_count: number;
+    /** `[]` until the teacher shows this question's board. */
+    question_leaderboard: QuestionLeaderboardRow[];
   }) | null;
   challenges: ChallengeRow[];
   leaderboard: LeaderboardRow[];
@@ -170,6 +193,8 @@ export interface StudentActivity {
   distribution: DistributionBucket[];
   my_response: StudentResponse | null;
   has_response: boolean;
+  /** `[]` until the teacher shows this question's board. */
+  question_leaderboard: QuestionLeaderboardRow[];
 }
 
 export interface StudentState {

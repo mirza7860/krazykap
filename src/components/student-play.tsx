@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { ChoicePicker } from "@/components/choice-picker";
 import { TimerRing } from "@/components/timer-ring";
-import { Leaderboard } from "@/components/leaderboard";
+import { QuestionLeaderboard } from "@/components/question-leaderboard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -659,11 +659,20 @@ function Result({ state }: { state: NonNullable<ReturnType<typeof useStudentRoom
 
       {a.state === "leaderboard" && (
         <div className="rounded-3xl border border-border bg-card p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <Trophy className="size-4 text-[var(--gold)]" />
-            <h3 className="font-heading font-bold">Leaderboard</h3>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Trophy className="size-4 text-[var(--gold)]" />
+              <h3 className="font-heading font-bold">This question</h3>
+            </div>
+            <span className="text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
+              Q{a.seq}
+            </span>
           </div>
-          <Leaderboard rows={state.leaderboard} highlightId={me.id} max={10} />
+          <QuestionLeaderboard
+            rows={a.question_leaderboard ?? []}
+            highlightId={me.id}
+            max={20}
+          />
         </div>
       )}
 
@@ -709,7 +718,6 @@ function Pill({
 
 function YourStats({ state }: { state: NonNullable<ReturnType<typeof useStudentRoom>["state"]> }) {
   const me = state.me;
-  const rank = state.leaderboard.find((r) => r.id === me.id)?.rank ?? null;
   const acc =
     me.answered_count > 0 ? Math.round((me.correct_count / me.answered_count) * 100) : null;
 
@@ -718,9 +726,11 @@ function YourStats({ state }: { state: NonNullable<ReturnType<typeof useStudentR
       <p className="text-xs font-bold tracking-widest text-muted-foreground uppercase">
         You
       </p>
+      {/* No session-wide rank here: overall standings stay on the teacher's
+          screen until they hit "Final results". */}
       <div className="mt-3 grid grid-cols-4 gap-2">
         <Stat label="XP" value={String(me.xp)} />
-        <Stat label="Rank" value={rank ? `#${rank}` : "—"} />
+        <Stat label="Correct" value={String(me.correct_count)} />
         <Stat label="Streak" value={String(me.streak)} />
         <Stat label="Accuracy" value={acc === null ? "—" : `${acc}%`} />
       </div>

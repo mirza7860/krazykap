@@ -8,6 +8,8 @@ import { ResponseBars } from "@/components/response-bars";
 import { ValueBars, groupValues } from "@/components/value-bars";
 import { TimerRing } from "@/components/timer-ring";
 import { Leaderboard } from "@/components/leaderboard";
+import { QuestionLeaderboard } from "@/components/question-leaderboard";
+import { FinalResults } from "@/components/final-results";
 import { PodiumView } from "@/components/podium-view";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +78,7 @@ import {
   Rocket,
   Square,
   Radio,
+  PartyPopper,
 } from "lucide-react";
 
 /** For values that never change during the session (there is nothing to subscribe to). */
@@ -88,6 +91,8 @@ export function RoomControl({ code }: { code: string }) {
   const [resolveError, setResolveError] = useState<string | null>(null);
   // Lifted so "End class" can land on the wrap-up instead of the dashboard.
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const [revealing, setRevealing] = useState(false);
 
   // Resolve the human-friendly code into a room id (RLS scopes this to us).
   useEffect(() => {
@@ -124,6 +129,31 @@ export function RoomControl({ code }: { code: string }) {
     void refresh();
   }, [emit, refresh]);
 
+  const alreadyRevealed = !!state?.room.settings?.results_revealed_at;
+
+  /**
+   * "Final results" — the end-of-class moment.
+   *
+   * The flag rides along in the room's existing settings blob, so the projector
+   * picks it up from the state it already polls and every phone stays out of
+   * it (per the client, the celebration is for the room, not the phones).
+   * Launching the next question clears it again server-side.
+   */
+  const revealResults = useCallback(async () => {
+    if (!roomId || !state) return;
+    if (!state.room.settings?.results_revealed_at) {
+      setRevealing(true);
+      const { error } = await setRoomSettings(roomId, {
+        ...state.room.settings,
+        results_revealed_at: new Date().toISOString(),
+      });
+      setRevealing(false);
+      if (error) return toast.error(error);
+      notify();
+    }
+    setResultsOpen(true);
+  }, [roomId, state, notify]);
+
   if (resolveError) return <ResolveFailed code={code} message={resolveError} />;
 
   return (
@@ -137,6 +167,9 @@ export function RoomControl({ code }: { code: string }) {
         summary={state?.summary ?? null}
         summaryOpen={summaryOpen}
         onSummaryOpenChange={setSummaryOpen}
+        resultsRevealed={alreadyRevealed}
+        revealing={revealing}
+        onRevealResults={() => void revealResults()}
         onEndRoom={async () => {
           if (!roomId) return;
           const { error: e } = await closeRoom(roomId);
@@ -151,6 +184,22 @@ export function RoomControl({ code }: { code: string }) {
           toast.success("Join link copied");
         }}
       />
+
+      <Dialog open={resultsOpen} onOpenChange={setResultsOpen}>
+        <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl font-extrabold">
+              🏆 Final results
+            </DialogTitle>
+            <DialogDescription>
+              Podium and session leaderboard for this class.
+            </DialogDescription>
+          </DialogHeader>
+          {state && (
+            <FinalResults leaderboard={state.summary?.leaderboard ?? []} />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
         {!ready && !error ? (
@@ -184,6 +233,9 @@ function ControlHeader({
   summary,
   summaryOpen,
   onSummaryOpenChange,
+  resultsRevealed,
+  revealing,
+  onRevealResults,
   onEndRoom,
   onCopy,
 }: {
@@ -195,13 +247,14 @@ function ControlHeader({
   summary: SessionSummary | null;
   summaryOpen: boolean;
   onSummaryOpenChange: (v: boolean) => void;
+  resultsRevealed: boolean;
+  revealing: boolean;
+  onRevealResults: () => unknown;
   onEndRoom: () => unknown;
   onCopy: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [ending, setEnding] = useState(false);
-
-  const [podiumModalOpen, setPodiumModalOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-card/85 backdrop-blur">
@@ -239,8 +292,13 @@ function ControlHeader({
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setPodiumModalOpen(true)}>
-            🏆 Podium
+          <Button
+            variant={resultsRevealed ? "outline" : "default"}
+            size="sm"
+            disabled={revealing || !roomId}
+            onClick={() => onRevealResults()}
+          >
+            <PartyPopper className="size-4" /> Final results
           </Button>
           <Button variant="ghost" size="sm" onClick={() => onSummaryOpenChange(true)}>
             <BarChart3 className="size-4" /> Summary
@@ -264,17 +322,6 @@ function ControlHeader({
         summary={summary}
         running={status === "active" || status === "lobby"}
       />
-
-      <Dialog open={podiumModalOpen} onOpenChange={setPodiumModalOpen}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle className="font-display text-xl font-extrabold">
-              🏆 Olympic Podium Stand
-            </DialogTitle>
-          </DialogHeader>
-          <PodiumView leaderboard={summary?.leaderboard || []} />
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent className="sm:max-w-sm">
@@ -751,6 +798,16 @@ function ActiveQuestionCard({
           </div>
         )}
 
+        {/* per-question standings — the room-wide board only shows at "Final results" */}
+        {a.state === "leaderboard" && (
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              This question&apos;s leaderboard
+            </p>
+            <QuestionLeaderboard rows={a.question_leaderboard ?? []} max={20} />
+          </div>
+        )}
+
         {/* per-student responses after reveal */}
         {(a.state === "revealed" || a.state === "leaderboard") && a.responses.length > 0 && (
           <div>
@@ -830,7 +887,7 @@ function ActiveQuestionCard({
 
           {(a.state === "revealed" || a.state === "distribution") && (
             <Button size="lg" disabled={busy} onClick={() => void go("leaderboard")}>
-              <Trophy className="size-4" /> Show leaderboard
+              <Trophy className="size-4" /> Show question leaderboard
             </Button>
           )}
 

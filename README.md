@@ -22,6 +22,10 @@ will 404 until they exist.
 > session token from `localStorage`. Teachers (`authenticated`) get table access
 > guarded by row level security.
 
+**Already have a database?** Re-run `supabase/schema.sql` after pulling an
+update. The file is idempotent, so it only refreshes functions/indexes/policies
+and never touches your question bank, teachers or results.
+
 ### 2. Environment
 
 `.env.local` already holds:
@@ -66,8 +70,14 @@ Open [http://localhost:3000](http://localhost:3000).
    - **0–50** speed bonus by how early in the window the answer landed
    - streak milestones **3 → +20**, **5 → +50**, **10 → +100**
 5. Teacher **shows the split** (`distribution`) — aggregate bars only, nobody's
-   answer is exposed — then **reveals**, then the **leaderboard**.
-6. **End class** closes the room and lands on the session summary.
+   answer is exposed — then **reveals**, then the **per-question leaderboard**.
+   That board ranks only the students who answered *this* question, by the XP
+   they earned on it (`public.question_leaderboard`). Room-wide standings stay
+   on the teacher's screen throughout the lesson.
+6. Teacher **ends the class** with **Final results** — the top-3 podium and the
+   session leaderboard appear on the teacher's screen and the projector, with a
+   confetti burst. Launching the next question clears the flag again.
+7. **End class** closes the room and lands on the session summary.
 
 Realtime is split deliberately: students hold no table privileges, so they use
 **Broadcast + Presence** on `room:{id}` carrying only "refetch" signals; the

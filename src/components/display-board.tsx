@@ -7,8 +7,8 @@ import { ResponseBars } from "@/components/response-bars";
 import { ValueBars, groupValues } from "@/components/value-bars";
 import { TimerRing } from "@/components/timer-ring";
 import { RoomQr } from "@/components/room-qr";
-import { Leaderboard } from "@/components/leaderboard";
-import { PodiumView } from "@/components/podium-view";
+import { QuestionLeaderboard } from "@/components/question-leaderboard";
+import { FinalResults } from "@/components/final-results";
 import { useTeacherRoom } from "@/lib/use-teacher-room";
 import { useRoomChannel } from "@/lib/use-room-channel";
 import { useCountdown } from "@/lib/use-countdown";
@@ -21,7 +21,7 @@ const PHASE_LABEL: Record<string, string> = {
   answering: "Answers open",
   distribution: "Discussing",
   revealed: "Answer revealed",
-  leaderboard: "Leaderboard",
+  leaderboard: "Question leaderboard",
 };
 
 /** No-op subscribe for `useSyncExternalStore` — the window origin is stable. */
@@ -167,6 +167,26 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
       : null;
 
   const showDistribution = a?.state === "distribution" || a?.state === "revealed" || a?.state === "leaderboard";
+
+  // End of class: the teacher pressed "Final results" (or the room closed
+  // without them pressing it, having scored at least one answer — the
+  // celebration should never just vanish). The flag rides in `room.settings`,
+  // so it arrives on the state this screen already polls; no extra request,
+  // no extra channel. A room that never scored still gets its "That's a wrap".
+  const resultsRevealed = !!state.room.settings?.results_revealed_at;
+  const scored = (state.summary?.leaderboard?.length ?? 0) > 0;
+  if (resultsRevealed || (closed && scored)) {
+    return (
+      <Shell code={code}>
+        <div className="mx-auto w-full max-w-5xl py-4">
+          <FinalResults
+            leaderboard={state.summary?.leaderboard ?? state.leaderboard ?? []}
+            max={20}
+          />
+        </div>
+      </Shell>
+    );
+  }
 
   return (
     <Shell code={code}>
@@ -351,18 +371,22 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
         <aside className="flex flex-col gap-4">
           <div className="rounded-3xl border border-border bg-card p-5">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-heading text-lg font-bold">Leaderboard</h3>
+              <h3 className="font-heading text-lg font-bold">This question</h3>
             </div>
             <div className="max-h-[420px] overflow-y-auto pr-1">
-              <Leaderboard rows={state.leaderboard} max={50} />
-            </div>
-          </div>
-
-              {closed && state.leaderboard.length > 0 && (
-                <div className="mb-6">
-                  <PodiumView leaderboard={state.leaderboard} />
+              {a?.state === "leaderboard" ? (
+                <QuestionLeaderboard rows={a.question_leaderboard ?? []} max={50} />
+              ) : (
+                <div className="grid place-items-center rounded-2xl border border-dashed border-border px-4 py-10 text-center">
+                  <p className="font-display text-sm font-bold">Standings stay hidden</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Your teacher shows this question&apos;s board when they&apos;re
+                    ready.
+                  </p>
                 </div>
               )}
+            </div>
+          </div>
 
           <div className="rounded-3xl border border-border bg-card p-5">
             <p className="text-xs font-bold tracking-widest text-muted-foreground uppercase">

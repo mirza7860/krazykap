@@ -550,6 +550,50 @@ begin
 end;
 $fn$;
 
+-- Per-question leaderboard (client request: every question gets its own board
+-- instead of one room-wide aggregate for the whole lesson).
+--
+-- Ranks ONLY the students who actually answered this question, by the XP they
+-- earned on it, then correctness, then reaction time. It is computed inside the
+-- SECURITY DEFINER state RPCs so the ordering is byte-identical on the
+-- teacher's laptop, the projector and every phone — one source of truth.
+--
+-- Never granted to a client role: students reach it only through
+-- get_room_state(), teachers only through get_teacher_state(). Calling it
+-- directly with an arbitrary activity id would leak per-question results
+-- before the teacher reveals, so execute is revoked from PUBLIC, anon and
+-- authenticated below.
+create or replace function public.question_leaderboard(p_activity_id uuid)
+returns jsonb
+language sql
+security definer
+set search_path = ''
+as $fn$
+  select coalesce(jsonb_agg(x order by rn), '[]'::jsonb)
+    from (
+      select row_number() over (w) as rn,
+             jsonb_build_object(
+               'rank',        row_number() over (w),
+               'id',          r.participant_id,
+               'nickname',    p.nickname,
+               'team',        p.team,
+               'xp',          r.xp,
+               'is_correct',  r.is_correct,
+               'reaction_ms', r.reaction_ms
+             ) as x
+        from public.responses r
+        join public.participants p on p.id = r.participant_id
+       where r.activity_id = p_activity_id
+      window w as (
+        order by r.xp desc,
+                 r.is_correct desc,
+                 r.reaction_ms asc nulls last,
+                 r.submitted_at asc,
+                 r.participant_id asc
+      )
+    ) t
+$fn$;
+
 create or replace function public.get_room_state(p_token text)
 returns jsonb
 language plpgsql
@@ -680,7 +724,12 @@ begin
                           then v_act.explanation else null end,
       'distribution', coalesce(v_dist, '[]'::jsonb),
       'my_response', coalesce(v_result, 'null'::jsonb),
-      'has_response', (v_resp.id is not null)
+      'has_response', (v_resp.id is not null),
+      -- Only populated once the teacher shows the per-question board; every
+      -- other phase returns [] so no ranking is observable early.
+      'question_leaderboard', case when v_state = 'leaderboard'
+                                   then public.question_leaderboard(v_act.id)
+                                   else '[]'::jsonb end
     ) end,
     'leaderboard', coalesce(v_lb, '[]'::jsonb),
     'participants', coalesce((
@@ -1082,7 +1131,11 @@ begin
         join public.participants p on p.id = r.participant_id
         where r.activity_id = v_act.id
       ), '[]'::jsonb),
-      'response_count', (select count(*) from public.responses where activity_id = v_act.id)
+      'response_count', (select count(*) from public.responses where activity_id = v_act.id),
+      -- Same per-question board the students get, so all three screens agree.
+      'question_leaderboard', case when v_act.state = 'leaderboard'
+                                   then public.question_leaderboard(v_act.id)
+                                   else '[]'::jsonb end
     ) end,
     'challenges', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -1131,6 +1184,13 @@ begin
   if p_type not in ('mcq','true_false','prediction','numerical','find_error','exit_ticket') then
     raise exception 'type_invalid' using errcode = '22023';
   end if;
+
+  -- A brand-new question invalidates any earlier "Final results" reveal, so the
+  -- projector goes back to the normal lesson view instead of staying stuck on
+  -- a celebration for a round the class has moved past.
+  update public.rooms
+     set settings = settings - 'results_revealed_at'::text
+   where id = p_room_id;
 
   -- only one open activity at a time
   update public.activities set state = 'closed'
@@ -1446,13 +1506,20 @@ begin
          'leaderboard','get_session_summary','get_teacher_state','launch_activity',
          'set_activity_state','close_activity','pause_timer','set_participant_team',
          'auto_assign_teams','decide_challenge','set_room_settings',
-         'speed_bonus','streak_milestone','hash_token','is_numerical_correct'
+         'speed_bonus','streak_milestone','hash_token','is_numerical_correct',
+         'question_leaderboard'
        )
   loop
     execute 'revoke execute on function ' || f || ' from public, anon';
   end loop;
 end;
 $g$;
+
+-- Internal helper only — it must be unreachable as a PostgREST RPC, otherwise
+-- any signed-in teacher (or anon, if the loop above were ever edited away)
+-- could pull a question's results before it is revealed. The state RPCs still
+-- call it because SECURITY DEFINER runs them as the owner, which keeps EXECUTE.
+revoke execute on function public.question_leaderboard(uuid) from public, anon, authenticated;
 
 grant execute on function public.join_room(text, text) to anon, authenticated;
 grant execute on function public.get_room_state(text) to anon, authenticated;
