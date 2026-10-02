@@ -44,8 +44,8 @@ export function summaryWithReport(
  * Session report card: every student who joined, whether they scored or not.
  *
  * Deliberately not the leaderboard — `public.leaderboard()` caps at ten rows
- * and filters out anyone with `correct_count > 0`, which is exactly the wrong
- * shape for a record of who was in the room. This is the roll call: answered,
+ * and drops anyone whose `correct_count` is 0, which is exactly the wrong shape
+ * for a record of who was in the room. This is the roll call: answered,
  * wrong, correct, unattempted, XP.
  */
 export function ReportCard({
@@ -119,8 +119,10 @@ export function ReportCard({
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} className="border-t border-border/70">
-                <td className="max-w-[180px] px-3 py-2">
-                  <span className="truncate font-semibold">{r.nickname}</span>
+                <td className="px-3 py-2">
+                  <span className="block max-w-[180px] truncate font-semibold">
+                    {r.nickname}
+                  </span>
                 </td>
                 <td className={`${num} text-[var(--primary)]`}>{r.xp ?? 0}</td>
                 <td className={`${num} text-muted-foreground`}>
