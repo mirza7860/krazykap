@@ -1766,5 +1766,25 @@ $fn$;
 revoke execute on function public.ping_room(uuid, text) from public, anon;
 grant execute on function public.ping_room(uuid, text) to authenticated;
 
+-- ----------------------------------------------------------------------------
+-- 14. Counter repair (idempotent, safe to re-run)
+--     answered_count / correct_count are derived from `responses` on every
+--     reveal, so rooms in flight self-heal on their next reveal. Sessions
+--     scored before that rule existed keep the drift the old hand-tallied
+--     counters left behind — a streak milestone used to swallow a correct
+--     answer's credit, which is how a student with 5 right read as 4. This
+--     straightens every participant out the moment the schema is re-run.
+--     XP is deliberately left alone: historical scores are not rewritten.
+-- ----------------------------------------------------------------------------
+
+update public.participants p
+   set answered_count = (select count(*)::int
+                           from public.responses r
+                          where r.participant_id = p.id),
+       correct_count  = (select count(*)::int
+                           from public.responses r
+                          where r.participant_id = p.id
+                            and r.is_correct);
+
 -- Done.
 select 'Rain of Physics schema installed' as result;
