@@ -213,8 +213,8 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
         />
       </div>
 
-      <main className="grid flex-1 items-start gap-5 lg:grid-cols-[1.4fr_1fr]">
-        <section className="flex flex-col gap-4">
+      <main className="grid flex-1 items-start gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <section className="flex min-w-0 flex-col gap-4">
           {a ? (
             <>
               <div className="rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
@@ -376,7 +376,7 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
           )}
         </section>
 
-        <aside className="flex flex-col gap-4">
+        <aside className="flex min-w-0 flex-col gap-4">
           <div className="rounded-3xl border border-border bg-card p-5">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-heading text-lg font-bold">This question</h3>

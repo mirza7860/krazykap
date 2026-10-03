@@ -489,9 +489,9 @@ function RoomBody({
   const waiting = total - answered;
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
       {/* ----------------------------------------------------- main column */}
-      <div className="flex flex-col gap-5">
+      <div className="flex min-w-0 flex-col gap-5">
         {activity ? (
           <ActiveQuestionCard
             state={state}
@@ -567,7 +567,7 @@ function RoomBody({
       </div>
 
       {/* --------------------------------------------------- side column */}
-      <aside className="flex flex-col gap-5">
+      <aside className="flex min-w-0 flex-col gap-5">
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-base font-bold">
@@ -741,7 +741,7 @@ function QuestionPaperPanel({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ol className="max-h-[340px] space-y-1.5 overflow-y-auto pr-1">
+        <ol className="max-h-[340px] space-y-1.5 overflow-y-auto overscroll-contain pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {questions.map((q, i) => (
             <li key={q.id}>
               <button
