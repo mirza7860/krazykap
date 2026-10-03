@@ -1580,7 +1580,45 @@ end;
 $fn$;
 
 -- ----------------------------------------------------------------------------
--- 11. Grants — students may only execute the RPCs, never touch tables
+-- 11. Teacher: paginated module index for the question bank
+--      Groups in the database so the browser never has to read prompt text to
+--      learn a module name: one page of modules costs 24 short rows whether
+--      the bank holds ten questions or ten thousand. SECURITY INVOKER keeps the
+--      `questions_own` RLS policy on the grouping query, so a teacher only ever
+--      counts their own questions.
+--      p_search null lists every module; otherwise it substring-matches names.
+-- ----------------------------------------------------------------------------
+
+create or replace function public.question_modules(
+  p_search text   default null,
+  p_limit  integer default 24,
+  p_offset integer default 0
+)
+returns table (set_name text, question_count bigint, total_modules bigint)
+language sql
+stable
+security invoker
+set search_path = public, pg_temp
+as $fn$
+  select nullif(name, ''), questions, total
+    from (
+      select coalesce(q.set_name, '') as name,
+             count(*)                 as questions,
+             count(*) over ()         as total
+        from public.questions q
+       where q.teacher_id = auth.uid()
+         and (p_search is null
+              or p_search = ''
+              or q.set_name ilike '%' || p_search || '%')
+       group by 1
+       order by 1
+      limit greatest(p_limit, 1)
+     offset greatest(p_offset, 0)
+    ) page;
+$fn$;
+
+-- ----------------------------------------------------------------------------
+-- 12. Grants — students may only execute the RPCs, never touch tables
 -- ----------------------------------------------------------------------------
 
 do $g$
@@ -1597,6 +1635,7 @@ begin
          'leaderboard','get_session_summary','get_teacher_state','launch_activity',
          'set_activity_state','close_activity','pause_timer','set_participant_team',
          'auto_assign_teams','decide_challenge','set_room_settings',
+         'question_modules',
          'speed_bonus','streak_milestone','hash_token','is_numerical_correct',
          'question_leaderboard'
        )
@@ -1636,9 +1675,10 @@ grant execute on function public.set_participant_team(uuid, uuid, text) to authe
 grant execute on function public.auto_assign_teams(uuid, integer) to authenticated;
 grant execute on function public.decide_challenge(uuid, uuid, boolean) to authenticated;
 grant execute on function public.set_room_settings(uuid, jsonb) to authenticated;
+grant execute on function public.question_modules(text, integer, integer) to authenticated;
 
 -- ----------------------------------------------------------------------------
--- 12. Realtime broadcast helper
+-- 13. Realtime broadcast helper
 --    Lets any SECURITY DEFINER RPC ping every browser in a room. The payload
 --    carries no answers — clients refetch authoritative state on receipt.
 -- ----------------------------------------------------------------------------

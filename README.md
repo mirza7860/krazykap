@@ -50,11 +50,60 @@ Open [http://localhost:3000](http://localhost:3000).
 | --- | --- | --- |
 | `/` | anyone | landing page |
 | `/login` | teacher | email/password (confirmation is on, so it says "check your inbox") |
-| `/dashboard` | teacher | question bank, topics, **Open a room** |
+| `/dashboard` | teacher | three views behind a sidebar: overview, the paged question bank, room history |
 | `/room/[code]` | teacher | control centre: launch, distribution, reveal, pause, leaderboard, summary |
 | `/room/[code]/display` | any screen | read-only smartboard mirror |
 | `/join` | student | enter room code |
 | `/join/[code]` | student | nickname gate → the whole game (mobile-first) |
+
+## The dashboard
+
+`/dashboard` is the teacher's home base. It deliberately leaves the room,
+projector and join screens alone — those are separate products with their own
+flow — and turns what used to be one long page into three views:
+
+| View | Holds |
+| --- | --- |
+| **Overview** | start-a-room card, quick actions (new question, import JSON, AI prompt guide), the running numbers (questions, modules, sessions, students reached), your modules and the last few sessions |
+| **Question bank** | every module with its question count, search across the whole bank, type and difficulty filters |
+| **Sessions** | room history with search and a live/ended filter, plus the report card per session |
+
+**A module is the Set the room's question paper already groups by** — there is no
+second thing to create. The composer's *Module* field is where a module comes
+into being: pick an existing name or type a new one, and the bank and the room
+both see it.
+
+Everything is paged, so a large bank costs what a small one costs:
+
+- the module list comes back **24 at a time**, grouped inside Postgres by
+  `question_modules()` — the browser never reads a prompt just to learn that a
+  module exists;
+- a module's questions load **25 at a time** when you open it, and again on
+  *Load more*;
+- search runs **on the server**, filtered and paged, so it searches every
+  question rather than only the ones already on screen.
+
+Every question row carries an **edit** action (pencil): the composer opens
+pre-filled — prompt, module, type, options, answer key, timer, topic — and
+*Save changes* updates the bank in place. Change the module field and the
+question moves between sets; the counts and the room's paper follow. Questions
+imported as *Exit Ticket* can now be edited too (that type is in the picker).
+
+Three destructive actions, each behind a confirmation:
+
+- **Delete a session** (trash on its card) removes the room and, through
+  `on delete cascade`, its participants, answers, activities and challenges —
+  the bank is untouched. A room that is still live can be deleted too, with a
+  warning that everyone connected is dropped.
+- **Delete a question** (trash on its row) takes it out of the bank for every
+  future class. Rounds already launched keep their own copy of the prompt, so a
+  running session is never damaged.
+- **Delete a module** (trash on its header) removes every question in that set.
+
+> This update adds the `question_modules()` RPC — re-run
+> [`supabase/schema.sql`](supabase/schema.sql) to get it. Until you do, the bank
+> falls back to a capped client-side scan of the `set_name` column and behaves
+> exactly as it did before.
 
 ## How a round flows
 
