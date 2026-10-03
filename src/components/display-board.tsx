@@ -76,7 +76,7 @@ export function DisplayBoard({ code }: { code: string }) {
   if (resolveError) {
     return (
       <Shell code={code}>
-        <div className="grid place-items-center rounded-3xl border bg-card p-12 text-center">
+        <div className="grid flex-1 place-items-center rounded-3xl border bg-card p-12 text-center">
           <div>
             <p className="font-display text-3xl font-extrabold">
               Room {code} isn&apos;t live
@@ -99,7 +99,7 @@ export function DisplayBoard({ code }: { code: string }) {
   if (!ready || (!state && !error)) {
     return (
       <Shell code={code}>
-        <div className="flex items-center justify-center gap-3 py-40 text-muted-foreground">
+        <div className="flex flex-1 items-center justify-center gap-3 text-muted-foreground">
           <Loader2 className="size-5 animate-spin" /> Connecting to room…
         </div>
       </Shell>
@@ -109,7 +109,7 @@ export function DisplayBoard({ code }: { code: string }) {
   if (!state) {
     return (
       <Shell code={code}>
-        <div className="grid place-items-center rounded-3xl border bg-card p-12 text-center">
+        <div className="grid flex-1 place-items-center rounded-3xl border bg-card p-12 text-center">
           <div>
             <p className="font-display text-3xl font-extrabold">Couldn&apos;t load</p>
             <p className="mt-2 font-mono text-sm text-muted-foreground">{error}</p>
@@ -124,8 +124,11 @@ export function DisplayBoard({ code }: { code: string }) {
 
 function Shell({ code, children }: { code: string; children: React.ReactNode }) {
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col gap-5 px-5 py-6">
-      <header className="flex flex-wrap items-center justify-between gap-3 mb-2">
+    // Exactly one viewport tall, never wider than a 1920 projector, and the
+    // page itself never scrolls: this screen is watched from the back of the
+    // room, so a scrollbar creeping in mid-lesson is the thing to avoid.
+    <div className="mx-auto flex h-dvh w-full max-w-[1920px] flex-col gap-5 overflow-hidden px-5 py-5 sm:px-8 sm:py-6">
+      <header className="flex shrink-0 items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Logo />
         </div>
@@ -133,7 +136,12 @@ function Shell({ code, children }: { code: string; children: React.ReactNode }) 
           {code}
         </span>
       </header>
-      {children}
+      {/* Every state renders inside this box, so it owns the leftover height.
+          Below `lg` the columns stack and there is genuinely more content than
+          room — there the box scrolls so nothing is ever clipped. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto lg:overflow-hidden">
+        {children}
+      </div>
     </div>
   );
 }
@@ -175,6 +183,17 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
 
   const showDistribution = a?.state === "distribution" || a?.state === "revealed" || a?.state === "leaderboard";
 
+  // A projector has one screen and no scrollbar. Long prompts step down a size
+  // rather than pushing the cards below the fold — a small type jump reads far
+  // better than a half-cut distribution.
+  const promptClass = !a
+    ? ""
+    : a.prompt.length > 260
+      ? "text-3xl"
+      : a.prompt.length > 160
+        ? "text-3xl sm:text-4xl"
+        : "text-3xl sm:text-5xl";
+
   // End of class: the teacher pressed "Final results" (or the room closed
   // without them pressing it, having scored at least one answer — the
   // celebration should never just vanish). The flag rides in `room.settings`,
@@ -185,13 +204,12 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
   if (resultsRevealed || (closed && scored)) {
     return (
       <Shell code={code}>
-        <div className="mx-auto w-full max-w-5xl py-4">
-          <FinalResults
-            leaderboard={state.summary?.leaderboard ?? state.leaderboard ?? []}
-            max={20}
-            celebrate
-          />
-        </div>
+        <FinalResults
+          leaderboard={state.summary?.leaderboard ?? state.leaderboard ?? []}
+          max={20}
+          celebrate
+          layout="split"
+        />
       </Shell>
     );
   }
@@ -199,7 +217,7 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
   return (
     <Shell code={code}>
       {/* ------------------------------------------------ stats strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid shrink-0 grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Players" value={total} />
         <Stat
           label="Answered"
@@ -213,11 +231,16 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
         />
       </div>
 
-      <main className="grid flex-1 items-start gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <section className="flex min-w-0 flex-col gap-4">
+      <main className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        {/* Left column: the question card soaks up any spare height, and the
+            cards that used to stack four deep now sit in a row from `xl` up.
+            That pairing — full width plus side by side — is what keeps a
+            1080p projector on a single screen. The column scrolls itself if a
+            question is ever longer than the room allows. */}
+        <section className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto">
           {a ? (
             <>
-              <div className="rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
+              <div className="flex flex-1 flex-col justify-center rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
                 <div className="mb-4 flex flex-wrap items-center gap-2">
                   <span className="rounded-lg bg-[var(--ember)]/12 px-2.5 py-1 text-xs font-bold tracking-wide text-[var(--primary)] uppercase">
                     {a.type.replace("_", " ")}
@@ -232,7 +255,7 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
                   )}
                 </div>
 
-                <p className="font-display text-3xl leading-tight font-extrabold break-words sm:text-5xl">
+                <p className={`font-display leading-tight font-extrabold break-words ${promptClass}`}>
                   {a.prompt}
                 </p>
 
@@ -251,99 +274,110 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
                 )}
               </div>
 
-              {showDistribution ? (
-                <div className="rounded-3xl border border-border bg-card p-5 sm:p-6">
-                  <p className="mb-3 text-xs font-bold tracking-widest text-muted-foreground uppercase">
-                    Live response distribution
-                  </p>
-                  {numeric ? (
-                    <ValueBars buckets={valueBuckets} total={answered} />
-                  ) : (
-                    <ResponseBars
-                      buckets={buckets}
-                      total={answered}
-                      optionCount={a.options?.length || 4}
-                      correctIndex={correctIndex}
-                    />
-                  )}
-                  {!revealed && (
-                    <p className="mt-3 text-xs text-muted-foreground">
-                      Anonymous split — no names, no individual answers, until you reveal.
+              <div
+                className={`grid shrink-0 gap-4 ${revealed ? "xl:grid-cols-2" : ""}`}
+              >
+                {showDistribution ? (
+                  <div className="min-w-0 rounded-3xl border border-border bg-card p-5 sm:p-6">
+                    <p className="mb-3 text-xs font-bold tracking-widest text-muted-foreground uppercase">
+                      Live response distribution
                     </p>
-                  )}
-                </div>
-              ) : (
-                <div className="rounded-3xl border border-dashed border-border bg-card/60 p-8 text-center">
-                  <p className="font-display text-lg font-bold">Responses Collecting</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Distribution will be displayed when controlled from teacher screen.
-                  </p>
-                </div>
-              )}
-
-              {revealed && a.type !== "numerical" && (
-                <div className="rounded-3xl border border-border bg-card p-5 sm:p-6">
-                  <p className="mb-3 text-xs font-bold tracking-widest text-muted-foreground uppercase">
-                    Options
-                  </p>
-                  <ul className="grid gap-2 sm:grid-cols-2">
-                    {a.options.map((o, i) => (
-                      <li
-                        key={i}
-                        className={`flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 ${
-                          i === correctIndex
-                            ? "border-[var(--success)] bg-[var(--success)]/10"
-                            : "border-border bg-muted/40"
-                        }`}
-                      >
-                        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted-foreground/70 font-display text-xs font-extrabold text-white">
-                          {OPTION_LETTERS[i] ?? i + 1}
-                        </span>
-                        <span className="min-w-0 flex-1 font-medium">{o}</span>
-                        {i === correctIndex && (
-                          <span className="font-display text-sm font-extrabold text-[var(--success)]">
-                            ✓
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {revealed && numeric && (
-                <div className="rounded-3xl border border-[var(--success)]/40 bg-[var(--success)]/10 p-5 sm:p-6">
-                  <p className="text-xs font-bold tracking-widest text-muted-foreground uppercase">
-                    Correct answer
-                  </p>
-                  <p className="font-display mt-1.5 text-3xl font-extrabold text-[var(--success)] sm:text-4xl">
-                    {String(a.correct_answer?.[0] ?? "—")}
-                    {Number(a.correct_answer?.[1]) > 0 && (
-                      <span className="text-base font-semibold text-muted-foreground">
-                        {" "}
-                        ± {String(a.correct_answer?.[1])}
-                      </span>
+                    {numeric ? (
+                      <ValueBars buckets={valueBuckets} total={answered} />
+                    ) : (
+                      <ResponseBars
+                        buckets={buckets}
+                        total={answered}
+                        optionCount={a.options?.length || 4}
+                        correctIndex={correctIndex}
+                      />
                     )}
-                  </p>
-                </div>
-              )}
+                    {!revealed && (
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        Anonymous split — no names, no individual answers, until you reveal.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="min-w-0 rounded-3xl border border-dashed border-border bg-card/60 p-8 text-center">
+                    <p className="font-display text-lg font-bold">Responses Collecting</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Distribution will be displayed when controlled from teacher screen.
+                    </p>
+                  </div>
+                )}
 
-              {a.explanation && revealed && (
-                <div className="rounded-3xl border border-[var(--gold)]/40 bg-[var(--gold)]/10 p-5">
-                  <p className="text-xs font-bold tracking-widest text-muted-foreground uppercase">
-                    Why
-                  </p>
-                  <p className="mt-1.5 text-lg">{a.explanation}</p>
-                </div>
-              )}
+                {/* The reveal cards sit BESIDE the distribution instead of
+                    under it, so the answer and the evidence read as one panel
+                    and the column keeps its height. */}
+                {revealed && (
+                  <div className="flex min-w-0 flex-col gap-4">
+                    {a.type !== "numerical" && (
+                      <div className="min-w-0 rounded-3xl border border-border bg-card p-5 sm:p-6">
+                        <p className="mb-3 text-xs font-bold tracking-widest text-muted-foreground uppercase">
+                          Options
+                        </p>
+                        <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                          {a.options.map((o, i) => (
+                            <li
+                              key={i}
+                              className={`flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 ${
+                                i === correctIndex
+                                  ? "border-[var(--success)] bg-[var(--success)]/10"
+                                  : "border-border bg-muted/40"
+                              }`}
+                            >
+                              <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted-foreground/70 font-display text-xs font-extrabold text-white">
+                                {OPTION_LETTERS[i] ?? i + 1}
+                              </span>
+                              <span className="min-w-0 flex-1 font-medium">{o}</span>
+                              {i === correctIndex && (
+                                <span className="font-display text-sm font-extrabold text-[var(--success)]">
+                                  ✓
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {numeric && (
+                      <div className="min-w-0 rounded-3xl border border-[var(--success)]/40 bg-[var(--success)]/10 p-5 sm:p-6">
+                        <p className="text-xs font-bold tracking-widest text-muted-foreground uppercase">
+                          Correct answer
+                        </p>
+                        <p className="font-display mt-1.5 text-3xl font-extrabold text-[var(--success)] sm:text-4xl">
+                          {String(a.correct_answer?.[0] ?? "—")}
+                          {Number(a.correct_answer?.[1]) > 0 && (
+                            <span className="text-base font-semibold text-muted-foreground">
+                              {" "}
+                              ± {String(a.correct_answer?.[1])}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+
+                    {a.explanation && (
+                      <div className="min-w-0 rounded-3xl border border-[var(--gold)]/40 bg-[var(--gold)]/10 p-5">
+                        <p className="text-xs font-bold tracking-widest text-muted-foreground uppercase">
+                          Why
+                        </p>
+                        <p className="mt-1.5 text-lg">{a.explanation}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </>
           ) : (
-            <div className="rounded-3xl border border-border bg-gradient-to-br from-[var(--ember)]/15 via-[var(--gold)]/10 to-[var(--primary)]/10 p-8 sm:p-14">
+            <div className="flex flex-1 flex-col justify-center rounded-3xl border border-border bg-gradient-to-br from-[var(--ember)]/15 via-[var(--gold)]/10 to-[var(--primary)]/10 p-8 sm:p-14">
               <div
                 className={
                   closed
                     ? ""
-                    : "flex flex-col items-start gap-7 sm:flex-row sm:items-center"
+                    : "flex flex-col items-start gap-7 sm:flex-row sm:items-center sm:justify-center"
                 }
               >
                 {/* The QR lives on the board, not only on the teacher's laptop:
@@ -355,7 +389,7 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
                     className="shrink-0"
                   />
                 )}
-                <div className="min-w-0">
+                <div className="max-w-xl min-w-0">
                   <h1 className="font-display text-4xl leading-tight font-extrabold sm:text-6xl">
                     {closed
                       ? "That’s a wrap"
@@ -376,32 +410,34 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
           )}
         </section>
 
-        <aside className="flex min-w-0 flex-col gap-4">
-          <div className="rounded-3xl border border-border bg-card p-5">
+        <aside className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto">
+          <div className="flex min-h-[210px] flex-1 flex-col rounded-3xl border border-border bg-card p-5">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-heading text-lg font-bold">This question</h3>
             </div>
-            <div className="max-h-[420px] overflow-y-auto pr-1">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
               {a?.state === "leaderboard" ? (
                 <QuestionLeaderboard rows={a.question_leaderboard ?? []} max={50} />
               ) : (
-                <div className="grid place-items-center rounded-2xl border border-dashed border-border px-4 py-10 text-center">
-                  <p className="font-display text-sm font-bold">Standings stay hidden</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Your teacher shows this question&apos;s board when they&apos;re
-                    ready.
-                  </p>
+                <div className="grid flex-1 place-items-center rounded-2xl border border-dashed border-border px-4 py-10 text-center">
+                  <div>
+                    <p className="font-display text-sm font-bold">Standings stay hidden</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Your teacher shows this question&apos;s board when they&apos;re
+                      ready.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="rounded-3xl border border-border bg-card p-5">
+          <div className="shrink-0 rounded-3xl border border-border bg-card p-5">
             <p className="text-xs font-bold tracking-widest text-muted-foreground uppercase">
               In the room
             </p>
             <p className="font-display mt-1 text-4xl font-extrabold">{total}</p>
-            <div className="mt-3 flex max-h-[140px] flex-wrap gap-1.5 overflow-y-auto pr-1">
+            <div className="mt-3 flex max-h-[180px] flex-wrap gap-1.5 overflow-y-auto pr-1">
               {state.participants.map((p) => (
                 <span
                   key={p.id}
