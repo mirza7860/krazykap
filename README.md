@@ -121,25 +121,36 @@ Three destructive actions, each behind a confirmation:
    *after* the question you just launched — it never serves the head of the
    set twice.
 4. Students **submit** → `submit_answer()` locks the participant row, grades on
-   the server, and applies:
-   - **100** base points for correct
-   - **0–50** speed bonus by how early in the window the answer landed
-   - streak milestones **3 → +20**, **5 → +50**, **10 → +100**
+   the server, and holds the answer — and its XP — until you reveal, so nobody
+   can see it early. The only thing it pays straight away is a streak
+   milestone: **3 → +20**, **5 → +50**, **10 → +100** for a run of correct
+   answers in a row.
 5. Teacher **shows the split** (`distribution`) — aggregate bars only, nobody's
-   answer is exposed — then **reveals**, then the **per-question leaderboard**.
-   That is the whole control bar: *Show responses → Reveal answer → Show
-   question leaderboard* (there is no skip button). That board ranks only the
-   students who answered *this* question, by the XP they earned on it
-   (`public.question_leaderboard`). Room-wide standings stay on the teacher's
-   screen throughout the lesson.
+   answer is exposed — then **reveals**, and the reveal is what scores. Each
+   correct answer is ranked by reaction time **among the correct answers only**
+   and paid **30** to the fastest, **20** to the next, **10** to every other
+   correct answer, plus a **+5 speed advantage** for the three fastest
+   (**35 / 25 / 15** on the podium, **10** for everyone slower). Wrong answers
+   stay at **0**, so accuracy dominates across a session and speed only widens
+   the gap at the top. The same reveal **re-derives `correct_count` and
+   `answered_count` from the answers themselves**, so a streak milestone can
+   never swallow a correct answer's credit, and every accuracy figure in the app
+   is correct ÷ answers given, printed beside the same fraction. Then comes the
+   **per-question leaderboard**. That is the whole control bar: *Show responses
+   → Reveal answer → Show question leaderboard* (there is no skip button). That
+   board ranks only the students who answered *this* question, by the XP they
+   earned on it (`public.question_leaderboard`). Room-wide standings stay on
+   the teacher's screen throughout the lesson.
 6. Teacher **ends the class** with **Final results** — the top-3 podium and the
    session leaderboard appear on the teacher's screen and on the projector.
+   The board ranks **most correct answers first**, then accuracy, then XP, then
+   speed, so the student with the most right answers is always on top.
    Only the projector celebrates: it fires a confetti burst (which honours
    `prefers-reduced-motion`) plus a short generated fanfare. Launching the
    next question clears the flag again.
 7. **End class** closes the room and lands on the session summary — a
    **report card covering every student who joined**, not just the leaderboard's
-   top ten: answered, correct, wrong, unattempted and XP, straight from
+   top ten: answered, correct, wrong, unattempted, accuracy and XP, straight from
    `get_session_summary`. The same card is in the dashboard's room history.
 
 Rooms that are still `lobby` or `active` keep **Live room** and **Display

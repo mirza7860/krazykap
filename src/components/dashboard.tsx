@@ -900,8 +900,7 @@ export function Dashboard() {
               )}
 
               {/* Full session report card — every student who joined, not just
-                  the leaderboard's top ten (which also drops anyone with zero
-                  correct answers). */}
+                  the leaderboard's top ten. */}
               <div>
                 <p className="mb-2 text-xs font-bold tracking-widest text-muted-foreground uppercase">
                   Student Performance

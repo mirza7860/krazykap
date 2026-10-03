@@ -466,8 +466,27 @@ grant insert, update, delete on public.topics, public.questions, public.rooms,
 -- ----------------------------------------------------------------------------
 -- 7. Scoring helpers (server authoritative)
 -- ----------------------------------------------------------------------------
-
--- Correct = 100. Speed bonus 0-50 by how early in the timer the answer landed.
+--
+-- What a room actually pays is decided in set_activity_state() when the
+-- teacher reveals, and it is one payout per correct answer, ranked by reaction
+-- time AMONG THE CORRECT ANSWERS ONLY:
+--
+--     1st correct  30 + 5 speed advantage  = 35
+--     2nd correct  20 + 5 speed advantage  = 25
+--     3rd correct  10 + 5 speed advantage  = 15
+--     4th and on   10
+--     wrong         0
+--
+-- So accuracy dominates over a session and speed only widens the gap at the
+-- top — a student who answers everything fast cannot out-score one who answers
+-- everything right. The base lands in `responses.base_points`, the +5 in
+-- `responses.speed_bonus`. Streak milestones (3/5/10 in a row -> 20/50/100)
+-- are paid at submit time instead, and never touch these counters: every
+-- correct/answered count is derived from `responses` on reveal.
+--
+-- `speed_bonus()` below is the original time-in-window table. Nothing in the
+-- scoring path calls it; the grant/revoke block at the end of this file still
+-- names it, so it stays defined.
 create or replace function public.speed_bonus(p_elapsed numeric, p_window integer)
 returns integer
 language sql
@@ -1053,7 +1072,9 @@ begin
              (select count(*) from public.activities a where a.room_id = p.room_id) as rounds,
              p.joined_at
         from public.participants p
-       where p.room_id = $1 and p.correct_count > 0
+       -- No `correct_count > 0` filter: a roll call lists the whole room.
+       -- Students who never scored sort to the bottom instead of vanishing.
+       where p.room_id = $1
     ),
     scored as (
       select *,
@@ -1068,20 +1089,34 @@ begin
       from base
     )
     select coalesce(jsonb_agg(x order by rn), '[]'::jsonb) from (
-      select row_number() over (order by score desc, xp desc, correct_count desc, coalesce(avg_speed, 999999) asc, joined_at asc, id asc) as rn,
+      select rn,
              jsonb_build_object(
-               'rank', row_number() over (order by score desc, xp desc, correct_count desc, coalesce(avg_speed, 999999) asc, joined_at asc, id asc),
+               'rank', rn,
                'id', id, 'nickname', nickname, 'team', team, 'xp', xp,
                'streak', streak, 'best_streak', best_streak,
                'correct_count', correct_count, 'answered_count', answered_count,
                'accuracy', accuracy, 'avg_speed', avg_speed,
                'score', score
              ) as x
-      from (
-        select p_sub.* from scored p_sub
-      ) s
-      order by score desc, xp desc, correct_count desc, coalesce(avg_speed, 999999) asc, joined_at asc, id asc
-      limit $3
+        from (
+          -- Who is #1. On the board the room actually uses (xp) the order is
+          -- "most correct answers first, then accuracy, then XP, then speed",
+          -- so the student with the most right answers is guaranteed the top.
+          -- The other four boards must sort by their own score, so those two
+          -- leading keys evaluate to NULL for them and fall through untouched.
+          -- One ORDER BY now drives both `rn` and `rank` — they cannot drift.
+          select row_number() over (
+                   order by case when $2 = 'xp' then correct_count end desc nulls last,
+                              case when $2 = 'xp' then accuracy     end desc nulls last,
+                              score desc, xp desc, correct_count desc,
+                              coalesce(avg_speed, 999999) asc,
+                              joined_at asc, id asc
+                 ) as rn,
+                 s.*
+            from scored s
+        ) ranked
+       order by rn
+       limit $3
     ) t
   $q$
   into v_result
@@ -1134,11 +1169,12 @@ begin
       limit 1
     ),
     'leaderboard', public.leaderboard(p_room_id, 'xp', 10),
-    -- Session report card: EVERY participant, including the ones the
-    -- leaderboard above omits (it caps at ten and drops `correct_count = 0`).
-    -- A roll call has to list the whole room, not just the winners.
+    -- Session report card: EVERY participant — the leaderboard above only ever
+    -- shows ten, and a roll call has to list the whole room, not just winners.
     'report', coalesce((
-      select jsonb_agg(x order by xp desc, correct desc, nickname asc, id asc)
+      -- Same rule as public.leaderboard(): most correct first, then accuracy,
+      -- then XP — so the roll call and the board never disagree on order.
+      select jsonb_agg(x order by correct desc, accuracy desc, xp desc, nickname asc, id asc)
         from (
           select jsonb_build_object(
                    'id',          p.id,
@@ -1152,7 +1188,9 @@ begin
                  p.xp,
                  p.nickname,
                  p.id,
-                 p.correct_count as correct
+                 p.correct_count as correct,
+                 case when p.answered_count > 0
+                      then round(100.0 * p.correct_count / p.answered_count) end as accuracy
             from public.participants p
            where p.room_id = p_room_id
         ) t
@@ -1359,40 +1397,66 @@ begin
        set state = 'revealed', revealed_at = now(), deadline = null, paused = false
      where id = v_act.id returning * into v_act;
 
-    -- Evaluate XP and correct_count for this activity if not already scored
+    -- Score this activity, then re-derive the room's counters from the answers.
+    --
+    -- The old guard here was `xp = 0`, but submit_answer() writes a streak
+    -- milestone onto that same row — so on the 3rd/5th/10th correct answer in
+    -- a row the student silently lost BOTH the base award AND their
+    -- correct_count increment, which is how "5 right, board says 4" happened.
+    -- `base_points` is set only here, so it is the safe once-only guard, and
+    -- adding to xp (instead of overwriting) keeps any streak bonus intact.
     if v_act.revealed_at is not null then
       declare
-        r_rec record;
+        r_rec        record;
         v_speed_rank integer := 1;
-        v_award_xp integer := 0;
+        v_base       integer := 0;
+        v_fast       integer := 0;
       begin
         for r_rec in
           select r.id, r.participant_id, r.reaction_ms
             from public.responses r
-           where r.activity_id = v_act.id and r.is_correct = true and r.xp = 0
+           where r.activity_id = v_act.id
+             and r.is_correct = true
+             and r.base_points = 0
            order by r.reaction_ms asc, r.submitted_at asc
         loop
+          -- 30 for the fastest correct answer, 20 for the next, 10 for every
+          -- other correct answer — plus a 5-point speed advantage for the top
+          -- three. Wrong answers never enter this loop: they stay at zero.
           if v_speed_rank = 1 then
-            v_award_xp := 20;
+            v_base := 30;
           elsif v_speed_rank = 2 then
-            v_award_xp := 10;
-          elsif v_speed_rank = 3 then
-            v_award_xp := 5;
+            v_base := 20;
           else
-            v_award_xp := 1;
+            v_base := 10;
           end if;
+          v_fast := case when v_speed_rank <= 3 then 5 else 0 end;
 
           update public.responses
-             set xp = v_award_xp, base_points = v_award_xp
+             set base_points = v_base,
+                 speed_bonus = v_fast,
+                 xp         = xp + v_base + v_fast
            where id = r_rec.id;
 
           update public.participants
-             set xp = xp + v_award_xp,
-                 correct_count = correct_count + 1
+             set xp = xp + v_base + v_fast
            where id = r_rec.participant_id;
 
           v_speed_rank := v_speed_rank + 1;
         end loop;
+
+        -- Derived, never tallied: every screen that prints correct/answered
+        -- now reads the answers themselves, so streak milestones, re-reveals
+        -- and answers changed while allow_change was on can never drift.
+        update public.participants p
+           set answered_count = (select count(*)::int
+                                   from public.responses r
+                                  where r.participant_id = p.id),
+               correct_count  = (select count(*)::int
+                                   from public.responses r
+                                  where r.participant_id = p.id
+                                    and r.is_correct)
+         where p.room_id = v_act.room_id;
       end;
     end if;
   elsif p_state = 'answering' then

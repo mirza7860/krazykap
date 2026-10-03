@@ -99,12 +99,16 @@ export const ACHIEVEMENT_CATEGORIES = [
   { id: "question_master", label: "Question Master", desc: "Answered every round" },
 ];
 
+/**
+ * The per-question payout, exactly as schema.sql applies it when the teacher
+ * reveals: base by speed rank among the CORRECT answers, plus the 5-point
+ * speed advantage for the top three. Wrong answers score nothing.
+ */
 export const SPEED_BONUS_TABLE = [
-  { window: "First 20% of timer", bonus: 50 },
-  { window: "20–40%", bonus: 40 },
-  { window: "40–60%", bonus: 30 },
-  { window: "60–80%", bonus: 20 },
-  { window: "80–100%", bonus: 10 },
+  { place: "1st correct", xp: 35 },
+  { place: "2nd correct", xp: 25 },
+  { place: "3rd correct", xp: 15 },
+  { place: "4th and slower", xp: 10 },
 ] as const;
 
 export const STREAK_MILESTONES = [

@@ -23,7 +23,7 @@ const STEPS = [
 const FEATURES = [
   { icon: Zap, title: "Quick Challenge", body: "Go from silence to a live question in under 30 seconds. No setup wizard." },
   { icon: BarChart3, title: "Live distribution", body: "See the class split as A/B/C/D bars — before anyone's answer is exposed." },
-  { icon: Timer, title: "Speed + accuracy", body: "Correct answers score 100. Early answers earn up to 50 bonus points." },
+  { icon: Timer, title: "Speed + accuracy", body: "Correct answers score 10–35 by speed — the three fastest earn +5. Wrong answers score zero." },
   { icon: Trophy, title: "Five leaderboards", body: "XP, accuracy, speed, streak and participation — so one student never sweeps." },
   { icon: ShieldCheck, title: "Server-scored", body: "Timestamps, scores and ranks are computed in Postgres. Clients can't cheat." },
   { icon: Sparkles, title: "Room disappears", body: "Temporary data expires with the room. Question banks stay yours." },

@@ -158,8 +158,8 @@ export interface SessionSummary {
   leaderboard: LeaderboardRow[];
   /**
    * Per-student report card covering EVERYONE who joined — unlike
-   * `leaderboard`, which stops at ten rows and drops anyone with zero correct
-   * answers. Absent on responses cached before the schema was re-run.
+   * `leaderboard`, which only ever shows ten rows. Absent on responses cached
+   * before the schema was re-run.
    */
   report?: StudentReportRow[];
 }

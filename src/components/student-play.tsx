@@ -642,7 +642,10 @@ function Result({ state }: { state: NonNullable<ReturnType<typeof useStudentRoom
         {revealed && res && (
           <div className="mt-5 grid grid-cols-3 gap-2">
             <Pill label="XP" value={`+${res.xp ?? 0}`} tone="primary" />
-            <Pill label="Speed" value={`+${res.speed_bonus ?? 0}`} />
+            {/* The speed advantage is 5 for the three fastest correct answers
+                and nothing for anyone slower — say that plainly rather than
+                printing a permanent "+0". */}
+            <Pill label="Speed" value={res.speed_bonus ? `+${res.speed_bonus}` : "—"} />
             <Pill label="Streak" value={`${me.streak}🔥`} />
           </div>
         )}

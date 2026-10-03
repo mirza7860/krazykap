@@ -17,6 +17,10 @@ export function summaryWithReport(
 ): SessionSummary | null {
   if (!summary || summary.report) return summary;
   const total = summary.questions;
+  // Mirrors the ORDER BY in get_session_summary(): most correct first, then
+  // accuracy, then XP — one ordering across the whole product.
+  const acc = (r: { correct: number; answered: number }) =>
+    r.answered > 0 ? Math.round((100 * r.correct) / r.answered) : -1;
   const report = participants
     .map((p) => {
       const answered = p.answered_count ?? 0;
@@ -33,8 +37,9 @@ export function summaryWithReport(
     })
     .sort(
       (a, b) =>
-        b.xp - a.xp ||
-        b.correct - a.correct ||
+        (b.correct ?? 0) - (a.correct ?? 0) ||
+        acc(b) - acc(a) ||
+        (b.xp ?? 0) - (a.xp ?? 0) ||
         a.nickname.localeCompare(b.nickname),
     );
   return { ...summary, report };
@@ -43,10 +48,9 @@ export function summaryWithReport(
 /**
  * Session report card: every student who joined, whether they scored or not.
  *
- * Deliberately not the leaderboard — `public.leaderboard()` caps at ten rows
- * and drops anyone whose `correct_count` is 0, which is exactly the wrong shape
- * for a record of who was in the room. This is the roll call: answered,
- * wrong, correct, unattempted, XP.
+ * Deliberately not the leaderboard — `public.leaderboard()` caps at ten rows,
+ * which is exactly the wrong shape for a record of who was in the room. This
+ * is the roll call: answered, correct, wrong, unattempted, accuracy and XP.
  */
 export function ReportCard({
   rows,
@@ -91,6 +95,10 @@ export function ReportCard({
   );
 
   const num = "px-2 py-2 text-right font-semibold tabular-nums";
+  // Same formula as `public.leaderboard()`: correct ÷ answers given. One
+  // denominator everywhere, so this card and the live board always agree.
+  const pct = (correct: number, answered: number) =>
+    answered > 0 ? `${Math.round((100 * correct) / answered)}%` : "—";
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border">
@@ -114,6 +122,7 @@ export function ReportCard({
               <th className="px-2 py-2 text-right">Correct</th>
               <th className="px-2 py-2 text-right">Wrong</th>
               <th className="px-3 py-2 text-right">Unattempted</th>
+              <th className="px-3 py-2 text-right">Accuracy</th>
             </tr>
           </thead>
           <tbody>
@@ -146,6 +155,7 @@ export function ReportCard({
                     {r.unattempted ?? 0}
                   </span>
                 </td>
+                <td className={num}>{pct(r.correct ?? 0, r.answered ?? 0)}</td>
               </tr>
             ))}
           </tbody>
@@ -161,6 +171,7 @@ export function ReportCard({
               <td className={`${num} text-muted-foreground`}>
                 {totals.unattempted}
               </td>
+              <td className={num}>{pct(totals.correct, totals.answered)}</td>
             </tr>
           </tfoot>
         </table>

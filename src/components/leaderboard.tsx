@@ -92,6 +92,11 @@ export function Leaderboard({
               {!dense && (
                 <p className="text-xs text-muted-foreground">
                   {row.correct_count}/{row.answered_count} correct
+                  {/* Accuracy is correct ÷ answers given — the same pair the
+                      fraction above prints, so a row can never read "4/12"
+                      next to "50%". Unattempted lives on the report card. */}
+                  {" · "}
+                  {row.accuracy === null ? "—" : `${row.accuracy}%`}
                   {row.best_streak > 1 && ` · best streak ${row.best_streak}`}
                 </p>
               )}
