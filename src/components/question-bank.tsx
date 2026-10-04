@@ -29,6 +29,7 @@ import {
   Sparkles,
   Trash,
   Upload,
+  WandSparkles,
   Zap,
 } from "lucide-react";
 import type { Difficulty } from "@/lib/types";
@@ -102,6 +103,7 @@ export function QuestionBank({
   onEditQuestion,
   onImport,
   onGuide,
+  onGenerate,
 }: {
   /** The page of modules the dashboard has loaded so far. */
   modules: QuestionModule[];
@@ -123,6 +125,8 @@ export function QuestionBank({
   onEditQuestion: (question: BankQuestion) => void;
   onImport: () => void;
   onGuide: () => void;
+  /** Opens the AI set generator — drafts a whole set for approval. */
+  onGenerate: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [term, setTerm] = useState("");
@@ -324,6 +328,9 @@ export function QuestionBank({
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => onNewQuestion(null)}>
                 <Plus className="size-4" /> New question
+              </Button>
+              <Button variant="outline" onClick={onGenerate}>
+                <WandSparkles className="size-4 text-[var(--primary)]" /> Generate with AI
               </Button>
               <Button variant="outline" onClick={onImport}>
                 <Upload className="size-4 text-[var(--ember)]" /> Import

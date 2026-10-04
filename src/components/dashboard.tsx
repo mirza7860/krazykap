@@ -32,6 +32,7 @@ import type { Difficulty, SessionSummary } from "@/lib/types";
 import { PodiumView } from "@/components/podium-view";
 import { ReportCard } from "@/components/report-card";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { AiSetGenerator } from "@/components/ai-set-generator";
 import {
   QuestionBank,
   type BankQuestion,
@@ -126,6 +127,7 @@ export function Dashboard() {
   const [editingQuestion, setEditingQuestion] = useState<BankQuestion | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [generateOpen, setGenerateOpen] = useState(false);
 
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [selectedHistoryRoom, setSelectedHistoryRoom] = useState<PastRoomRow | null>(null);
@@ -640,6 +642,7 @@ export function Dashboard() {
               onEditQuestion={editQuestion}
               onImport={() => setImportOpen(true)}
               onGuide={() => setGuideOpen(true)}
+              onGenerate={() => setGenerateOpen(true)}
             />
           )}
 
@@ -817,6 +820,15 @@ export function Dashboard() {
         onOpenImport={() => {
           setGuideOpen(false);
           setImportOpen(true);
+        }}
+      />
+
+      <AiSetGenerator
+        open={generateOpen}
+        onOpenChange={setGenerateOpen}
+        onSaved={() => {
+          setGenerateOpen(false);
+          refreshBank();
         }}
       />
 
