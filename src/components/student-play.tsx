@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { ChoicePicker } from "@/components/choice-picker";
 import { TimerRing } from "@/components/timer-ring";
-import { QuestionLeaderboard } from "@/components/question-leaderboard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -660,24 +659,10 @@ function Result({ state }: { state: NonNullable<ReturnType<typeof useStudentRoom
         </div>
       )}
 
-      {a.state === "leaderboard" && (
-        <div className="rounded-3xl border border-border bg-card p-5">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Trophy className="size-4 text-[var(--gold)]" />
-              <h3 className="font-heading font-bold">This question</h3>
-            </div>
-            <span className="text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
-              Q{a.seq}
-            </span>
-          </div>
-          <QuestionLeaderboard
-            rows={a.question_leaderboard ?? []}
-            highlightId={me.id}
-            max={20}
-          />
-        </div>
-      )}
+      {/* This question's standings are a teacher/display surface, not a phone
+          one: the teacher reveals them and they land on the projector. The
+          student keeps their own result, the explanation and their stats —
+          the class-wide ranking is never mirrored down to the phones. */}
 
       <YourStats state={state} />
 
