@@ -229,6 +229,8 @@ export const SYSTEM_INSTRUCTION = `You are the question writer for Rain of Physi
 
 Return only the JSON object your schema defines — no commentary, no markdown, no extra keys.
 
+set_name: a short quiz-style title for the whole set — 3–7 words, Title Case, no ending punctuation, specific enough that a teacher recognises it in their bank (e.g. "Newton's Laws Warm-Up", never "Physics Quiz"). The teacher often leaves their own name blank and relies on yours.
+
 Question types:
 - mcq: 4 options preferred (2–4 allowed), exactly one unambiguously correct. correct_answer is a one-element array holding the 0-based index of the correct option as a string, e.g. ["2"]. Distractors must target common misconceptions. Never "All of the above" / "None of the above".
 - true_false: options are always ["True","False"]. correct_answer ["0"] means True, ["1"] means False. The statement must be precisely falsifiable — no weasel words.
@@ -257,6 +259,7 @@ export function buildUserPrompt(req: GenerateSetRequest): string {
     `Difficulty: ${mix}.`,
     `Allowed types only: ${req.types.join(", ")}. Spread them naturally across the set instead of using one type for everything.`,
     "Make it feel like one coherent quiz: open with a warm-up, build to the hardest question last, and do not repeat a concept twice in the same wording.",
+    "Also give the set its set_name: a short title summarising what this brief covers — the teacher may have left their own set name blank and will use yours.",
   ].join("\n");
 }
 
@@ -330,12 +333,17 @@ const QUESTION_SCHEMA: Schema = {
 export const GEMINI_RESPONSE_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
+    set_name: {
+      type: Type.STRING,
+      description:
+        "Short quiz-style title for the whole set: 3–7 words, Title Case, no ending punctuation.",
+    },
     questions: {
       type: Type.ARRAY,
       description: "The generated set. Contains exactly the number requested.",
       items: QUESTION_SCHEMA,
     },
   },
-  required: ["questions"],
-  propertyOrdering: ["questions"],
+  required: ["set_name", "questions"],
+  propertyOrdering: ["set_name", "questions"],
 };

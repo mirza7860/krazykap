@@ -1,5 +1,6 @@
 "use client";
 
+import { ringClock } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 /** Big classroom clock. Circular ring drains as the deadline approaches. */export function TimerRing({
@@ -17,12 +18,25 @@ import { cn } from "@/lib/utils";
   const pct = Math.min(1, Math.max(0, seconds / safeTotal));
   const critical = seconds <= 5 && seconds > 0;
   const done = seconds <= 0;
+  // Clock face for anything past a minute ("1:30 / left"), plain seconds
+  // for the short classroom timers ("45 / seconds").
+  const clock = ringClock(seconds, total);
 
   const dims = {
     sm: { box: 64, stroke: 6, text: "text-lg", label: "text-[10px]" },
     md: { box: 112, stroke: 8, text: "text-3xl", label: "text-xs" },
     lg: { box: 176, stroke: 11, text: "text-6xl", label: "text-sm" },
   }[size];
+
+  // A clock face is wider than a bare number — step the type down so
+  // "59:59" and "1:00:00" stay inside the ring instead of spilling out.
+  const face = clock.big.length;
+  const textClass =
+    face >= 7
+      ? ({ sm: "text-xs", md: "text-lg", lg: "text-3xl" } as const)[size]
+      : face >= 5 && size === "lg"
+        ? "text-5xl"
+        : dims.text;
 
   const r = (dims.box - dims.stroke) / 2;
   const c = 2 * Math.PI * r;
@@ -73,15 +87,15 @@ import { cn } from "@/lib/utils";
         <span
           className={cn(
             "font-display font-extrabold tabular-nums",
-            dims.text,
+            textClass,
             done ? "text-muted-foreground" : critical ? "text-destructive" : "text-foreground",
           )}
         >
-          {paused ? "❚❚" : Math.ceil(seconds)}
+          {paused ? "❚❚" : clock.big}
         </span>
         {!paused && (
           <span className={cn(dims.label, "font-semibold text-muted-foreground")}>
-            seconds
+            {clock.label}
           </span>
         )}
       </div>

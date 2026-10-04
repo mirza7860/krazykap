@@ -7,6 +7,7 @@ import { RoomQr } from "@/components/room-qr";
 import { ResponseBars } from "@/components/response-bars";
 import { ValueBars, groupValues } from "@/components/value-bars";
 import { TimerRing } from "@/components/timer-ring";
+import { TimeInput } from "@/components/ui/time-input";
 import { Leaderboard } from "@/components/leaderboard";
 import { QuestionLeaderboard } from "@/components/question-leaderboard";
 import { FinalResults } from "@/components/final-results";
@@ -37,6 +38,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useTeacherRoom } from "@/lib/use-teacher-room";
 import { useRoomChannel } from "@/lib/use-room-channel";
 import { useCountdown } from "@/lib/use-countdown";
+import { formatDuration } from "@/lib/time";
 import {
   closeRoom,
   launchActivity,
@@ -757,7 +759,7 @@ function QuestionPaperPanel({
                   <span className="block truncate text-sm font-medium">{q.prompt}</span>
                   <span className="mt-0.5 block text-[10px] font-semibold text-muted-foreground uppercase">
                     {/* The set name only earns space when the paper mixes sets. */}
-                    {[q.type.replace("_", " "), q.difficulty, `${q.timer_seconds || 30}s`, activeSet === "all" ? q.set_name : null]
+                    {[q.type.replace("_", " "), q.difficulty, formatDuration(q.timer_seconds || 30), activeSet === "all" ? q.set_name : null]
                       .filter(Boolean)
                       .join(" · ")}
                   </span>
@@ -1173,6 +1175,9 @@ function QuestionComposer({
   const [tolerance, setTolerance] = useState("0");
   const [explanation, setExplanation] = useState("");
   const [timer, setTimer] = useState(30);
+  // Bumped whenever the timer is set from outside the fields (a quick
+  // template), so the TimeInput re-seeds its visible h:m:s from the new value.
+  const [timerSeed, setTimerSeed] = useState(0);
   const [difficulty, setDifficulty] = useState<Difficulty>("Medium");
   const [topic, setTopic] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1192,7 +1197,10 @@ function QuestionComposer({
   function pickTemplate(t: (typeof QUICK_TEMPLATES)[number]) {
     setType(t.type);
     if (t.defaults?.options) setOptions([...t.defaults.options, "", ""]);
-    if (t.defaults?.timer) setTimer(t.defaults.timer);
+    if (t.defaults?.timer) {
+      setTimer(t.defaults.timer);
+      setTimerSeed((n) => n + 1);
+    }
     if (t.defaults?.difficulty) setDifficulty(t.defaults.difficulty);
     if (t.type === "numerical") {
       setNumeric("");
@@ -1216,6 +1224,9 @@ function QuestionComposer({
       if (clean.length < 2) return toast.error("Add at least two options");
       if (correctIdx >= clean.length) return toast.error("Pick which option is correct");
       correct = [correctIdx];
+    }
+    if (!Number.isFinite(timer) || timer < 1 || timer > 3600) {
+      return toast.error("Timer must be between 1 second and 1 hour");
     }
 
     setBusy(true);
@@ -1352,55 +1363,14 @@ function QuestionComposer({
         )}
 
         <div className="grid grid-cols-3 gap-3">
-          <div className="grid gap-2 col-span-2">
-            <Label>Timer Duration</Label>
-            <div className="flex gap-2 items-center">
-              <div className="flex-1">
-                <span className="text-[10px] text-muted-foreground block">Hours</span>
-                <Input
-                  type="number"
-                  min={0}
-                  max={24}
-                  value={Math.floor(timer / 3600)}
-                  onChange={(e) => {
-                    const hrs = Math.max(0, Number(e.target.value));
-                    const mins = Math.floor((timer % 3600) / 60);
-                    const secs = timer % 60;
-                    setTimer(hrs * 3600 + mins * 60 + secs);
-                  }}
-                />
-              </div>
-              <div className="flex-1">
-                <span className="text-[10px] text-muted-foreground block">Mins</span>
-                <Input
-                  type="number"
-                  min={0}
-                  max={59}
-                  value={Math.floor((timer % 3600) / 60)}
-                  onChange={(e) => {
-                    const hrs = Math.floor(timer / 3600);
-                    const mins = Math.max(0, Number(e.target.value));
-                    const secs = timer % 60;
-                    setTimer(hrs * 3600 + mins * 60 + secs);
-                  }}
-                />
-              </div>
-              <div className="flex-1">
-                <span className="text-[10px] text-muted-foreground block">Secs</span>
-                <Input
-                  type="number"
-                  min={0}
-                  max={59}
-                  value={timer % 60}
-                  onChange={(e) => {
-                    const hrs = Math.floor(timer / 3600);
-                    const mins = Math.floor((timer % 3600) / 60);
-                    const secs = Math.max(0, Number(e.target.value));
-                    setTimer(hrs * 3600 + mins * 60 + secs);
-                  }}
-                />
-              </div>
-            </div>
+          <div className="col-span-2">
+            <TimeInput
+              key={timerSeed}
+              id="c-timer"
+              label="Timer Duration"
+              value={timer}
+              onValueChange={setTimer}
+            />
           </div>
           <div className="grid gap-2">
             <Label>Difficulty</Label>

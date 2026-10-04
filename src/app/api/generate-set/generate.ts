@@ -35,7 +35,7 @@ export class GenerateSetError extends Error {
 
 export async function generateSet(
   req: GenerateSetRequest,
-): Promise<{ questions: GeneratedQuestion[]; dropped: number }> {
+): Promise<{ questions: GeneratedQuestion[]; dropped: number; setName: string | null }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new GenerateSetError(
@@ -93,7 +93,8 @@ export async function generateSet(
     throw new GenerateSetError("invalid_output", "The AI reply wasn't readable JSON.", 502);
   }
 
-  // Schema wraps the set in { questions }; a bare array is tolerated too.
+  // Schema wraps the set in { set_name, questions }; a bare array is
+  // tolerated too (it simply carries no name).
   const list = Array.isArray(parsed)
     ? parsed
     : Array.isArray((parsed as { questions?: unknown }).questions)
@@ -102,6 +103,14 @@ export async function generateSet(
   if (!list) {
     throw new GenerateSetError("invalid_output", "The AI reply had no question list.", 502);
   }
+
+  // The proposed set name: loosened rather than zod-policed — the teacher
+  // can edit it in review anyway, so only whitespace and length matter.
+  const rawName =
+    !Array.isArray(parsed) && typeof (parsed as { set_name?: unknown }).set_name === "string"
+      ? (parsed as { set_name: string }).set_name.trim().replace(/\s+/g, " ")
+      : "";
+  const setName = rawName.slice(0, 60) || null;
 
   // Per-question validation: a single malformed question is dropped, the
   // set survives. The UI is told how many didn't make it.
@@ -120,5 +129,5 @@ export async function generateSet(
     );
   }
 
-  return { questions, dropped };
+  return { questions, dropped, setName };
 }

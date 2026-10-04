@@ -63,6 +63,38 @@ export interface GenerateSetRequest {
 export interface GenerateSetResponse {
   questions: GeneratedQuestion[];
   dropped: number;
+  /** Title Gemini proposed for the set — used when the teacher left theirs blank. */
+  setName?: string | null;
+}
+
+/**
+ * Last-resort set name, built on the client from the brief itself: first six
+ * words, title-cased, trailing glue words trimmed. Only reached when both
+ * the teacher and Gemini left the name empty.
+ */
+export function deriveNameFromBrief(brief: string): string {
+  const STOP = new Set([
+    "of",
+    "for",
+    "and",
+    "the",
+    "a",
+    "an",
+    "about",
+    "on",
+    "in",
+    "to",
+    "with",
+    "or",
+    "from",
+  ]);
+  let words = brief.trim().replace(/\s+/g, " ").split(" ").slice(0, 6);
+  while (words.length > 2 && STOP.has((words[words.length - 1] ?? "").toLowerCase())) {
+    words = words.slice(0, -1);
+  }
+  const text = words.join(" ").replace(/[.,;:!?"'`]+$/, "");
+  if (!text) return "Untitled AI Set";
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /**

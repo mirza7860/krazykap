@@ -16,6 +16,7 @@ import {
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { supabase } from "@/lib/rpc";
 import { DIFFICULTIES } from "@/lib/game";
+import { formatDuration } from "@/lib/time";
 import { toast } from "sonner";
 import {
   BookOpen,
@@ -627,7 +628,7 @@ function QuestionRow({
             <Badge variant="outline">{q.type.replace("_", " ")}</Badge>
             <Badge variant="outline">{q.difficulty}</Badge>
             <Badge variant="outline">
-              <Clock className="size-3" /> {q.timer_seconds}s
+              <Clock className="size-3" /> {formatDuration(q.timer_seconds)}
             </Badge>
             {q.type === "numerical" && q.correct_answer?.length > 0 && (
               <Badge variant="secondary">

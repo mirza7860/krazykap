@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TimeInput } from "@/components/ui/time-input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Dialog,
@@ -59,11 +60,6 @@ import {
   Trash,
 } from "lucide-react";
 
-interface TopicRow {
-  id: string;
-  name: string;
-}
-
 interface PastRoomRow {
   id: string;
   code: string;
@@ -97,7 +93,6 @@ export function Dashboard() {
   const [moduleTerm, setModuleTerm] = useState("");
   const [moduleMore, setModuleMore] = useState(false);
   const [loadingMoreModules, setLoadingMoreModules] = useState(false);
-  const [topics, setTopics] = useState<TopicRow[]>([]);
   const [questionTotal, setQuestionTotal] = useState(0);
   const [loadingModules, setLoadingModules] = useState(true);
   // Bumped after every save or delete, so every page of the bank is re-read.
@@ -243,13 +238,6 @@ export function Dashboard() {
   async function loadMoreModules() {
     await loadModules(modules.length, true, moduleTerm);
   }
-
-  useEffect(() => {
-    void (async () => {
-      const { data } = await supabase.from("topics").select("id,name").order("name");
-      if (data) setTopics(data as TopicRow[]);
-    })();
-  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setSessionTerm(sanitize(sessionQuery)), 300);
@@ -794,7 +782,6 @@ export function Dashboard() {
         key={builderSeq}
         open={builderOpen}
         onOpenChange={setBuilderOpen}
-        topics={topics}
         question={editingQuestion}
         defaultModule={builderModule}
         modules={namedModules.map((m) => m.name as string)}
@@ -1208,7 +1195,12 @@ function JsonImporter({
           options: Array.isArray(q.options) ? q.options : [],
           correct_answer: Array.isArray(q.correct_answer) ? q.correct_answer : [0],
           explanation: typeof q.explanation === "string" ? q.explanation : null,
-          timer_seconds: typeof q.timer_seconds === "number" ? q.timer_seconds : 30,
+          // The bank's own timer_seconds check is 1–3600; clamp so one bad
+          // imported value can't fail the whole insert.
+          timer_seconds:
+            typeof q.timer_seconds === "number" && Number.isFinite(q.timer_seconds)
+              ? Math.min(3600, Math.max(1, Math.round(q.timer_seconds)))
+              : 30,
           difficulty: typeof q.difficulty === "string" ? q.difficulty : "Medium",
         };
       });
@@ -1324,7 +1316,6 @@ function seedBank(q: BankQuestion | null | undefined): {
 function QuestionBuilder({
   open,
   onOpenChange,
-  topics,
   question,
   defaultModule,
   modules,
@@ -1332,7 +1323,6 @@ function QuestionBuilder({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  topics: TopicRow[];
   /** When set, the dialog edits this saved question instead of creating one. */
   question?: BankQuestion | null;
   /** Pre-fills the module when adding from inside an existing module. */
@@ -1361,7 +1351,6 @@ function QuestionBuilder({
   const [explanation, setExplanation] = useState(question?.explanation ?? "");
   const [timer, setTimer] = useState(question?.timer_seconds ?? 30);
   const [difficulty, setDifficulty] = useState<Difficulty>(question?.difficulty ?? "Medium");
-  const [topicId, setTopicId] = useState<string>(question?.topic_id ?? "");
   const [busy, setBusy] = useState(false);
 
   // True / False presents a fixed, non-editable option shelf — the room's own
@@ -1379,7 +1368,6 @@ function QuestionBuilder({
     setExplanation("");
     setTimer(30);
     setDifficulty("Medium");
-    setTopicId("");
     setType("mcq");
   };
 
@@ -1400,6 +1388,10 @@ function QuestionBuilder({
       toast.error("Add at least two options");
       return;
     }
+    if (!Number.isFinite(timer) || timer < 1 || timer > 3600) {
+      toast.error("Timer must be between 1 second and 1 hour");
+      return;
+    }
     setBusy(true);
     try {
       const body =
@@ -1416,7 +1408,6 @@ function QuestionBuilder({
         explanation: explanation.trim() || null,
         timer_seconds: timer,
         difficulty,
-        topic_id: topicId && topicId !== "none" ? topicId : null,
       };
 
       const { error } = question
@@ -1566,39 +1557,12 @@ function QuestionBuilder({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label>Timer</Label>
-              <Select value={String(timer)} onValueChange={(v) => setTimer(Number(v))}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[10, 20, 30, 45, 60, 90].map((s) => (
-                    <SelectItem key={s} value={String(s)}>
-                      {s}s
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>Topic</Label>
-              <Select value={topicId} onValueChange={(v) => setTopicId(v ?? "none")}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="None" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {topics.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          <TimeInput
+            id="q-timer"
+            label="Timer"
+            value={timer}
+            onValueChange={setTimer}
+          />
 
           <div className="grid gap-2">
             <Label htmlFor="q-exp">Explanation (shown after reveal)</Label>

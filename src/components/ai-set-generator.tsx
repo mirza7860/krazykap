@@ -4,8 +4,9 @@
  * Generate a whole question set with AI, then approve it question by
  * question before anything touches the bank.
  *
- * Step 1 "compose": set name, a brief in the AI Elements prompt box,
- * difficulty and type chips → POST /api/generate-set (server-side key,
+ * Step 1 "compose": set name (optional — Gemini proposes one when left
+ * blank), a brief in the AI Elements prompt box, difficulty and type chips
+ * → POST /api/generate-set (server-side key,
  * never exposed to this component). How many questions to write is read
  * out of the brief itself (default 10), so there is no count control.
  * Step 2 "review": every draft arrives
@@ -54,8 +55,10 @@ import {
   type GeneratedQuestion,
   type QuestionType,
   type SetDifficulty,
+  deriveNameFromBrief,
 } from "@/lib/ai-set";
 import { supabase } from "@/lib/rpc";
+import { formatDuration } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 /** One draft as the review step holds it — approval state rides along. */
@@ -112,7 +115,6 @@ export function AiSetGenerator({
   async function generate(text: string) {
     const trimmed = text.trim();
     if (trimmed.length < 3) return toast.error("Describe the questions you want first");
-    if (!setName.trim()) return toast.error("Give this set a name first");
     if (types.length === 0) return toast.error("Pick at least one question type");
 
     setBrief(trimmed);
@@ -134,6 +136,9 @@ export function AiSetGenerator({
 
       const data = payload as GenerateSetResponse;
       setQuestions(data.questions.map((q) => ({ ...q, approved: true })));
+      // A name the teacher typed always wins; otherwise fall back to the
+      // title Gemini proposed, then to one derived from the brief itself.
+      setSetName((prev) => prev.trim() || data.setName || deriveNameFromBrief(trimmed));
       if (data.dropped > 0) {
         toast.warning(
           `${data.dropped} generated question${data.dropped === 1 ? "" : "s"} failed validation and ${
@@ -208,6 +213,9 @@ export function AiSetGenerator({
                 onChange={(e) => setSetName(e.target.value)}
                 placeholder="e.g. Newton's Laws Quiz 1"
               />
+              <p className="text-xs text-muted-foreground">
+                Leave it blank and the AI names the set from your brief.
+              </p>
             </div>
 
             <div className="grid gap-2">
@@ -279,6 +287,19 @@ export function AiSetGenerator({
                 </MessageResponse>
               </MessageContent>
             </Message>
+
+            <div className="grid gap-2">
+              <Label htmlFor="ai-review-name">
+                Set name{" "}
+                <span className="font-normal text-muted-foreground">(becomes the module)</span>
+              </Label>
+              <Input
+                id="ai-review-name"
+                value={setName}
+                onChange={(e) => setSetName(e.target.value)}
+                placeholder="Set name"
+              />
+            </div>
 
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-bold tracking-widest text-muted-foreground uppercase">
@@ -454,7 +475,7 @@ function ReviewCard({ q, onToggle }: { q: DraftQuestion; onToggle: () => void })
             <Badge variant="outline">{q.difficulty}</Badge>
             <Badge variant="outline">
               <Clock className="mr-1 size-3" />
-              {q.timer_seconds}s
+              {formatDuration(q.timer_seconds)}
             </Badge>
             {answerLabel && (
               <Badge className="bg-[var(--primary)] text-white">{answerLabel}</Badge>
