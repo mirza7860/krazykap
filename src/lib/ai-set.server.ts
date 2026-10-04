@@ -9,9 +9,9 @@
 import { Type, type Schema } from "@google/genai";
 import { z } from "zod";
 import {
+  DEFAULT_COUNT,
   DIFFICULTY_LEVELS,
-  MAX_SET_SIZE,
-  MIN_SET_SIZE,
+  MAX_COUNT,
   QUESTION_TYPES,
   SET_DIFFICULTIES,
   type GenerateSetRequest,
@@ -19,24 +19,40 @@ import {
 
 /* ------------------------------------------------------------------ input */
 
-/** What the dialog is allowed to ask the server to generate. */
+/**
+ * What the dialog is allowed to ask the server to generate. No `count` field
+ * on purpose: how many questions to write is read out of the brief itself —
+ * a brief that names no number gets DEFAULT_COUNT.
+ */
 export const generateSetRequestSchema = z.object({
   brief: z
     .string()
     .trim()
     .min(3, "Describe the questions in a few words")
     .max(600, "Keep the brief under 600 characters"),
-  count: z
-    .number()
-    .int()
-    .min(MIN_SET_SIZE, `At least ${MIN_SET_SIZE} questions`)
-    .max(MAX_SET_SIZE, `At most ${MAX_SET_SIZE} questions`),
   difficulty: z.enum(SET_DIFFICULTIES),
   types: z
     .array(z.enum(QUESTION_TYPES))
     .min(1, "Pick at least one question type")
     .max(QUESTION_TYPES.length),
 });
+
+/**
+ * A number the teacher wrote themselves — "20 questions…", "20-question
+ * quiz", "questions: 15". Deliberately conservative: the number must touch
+ * the word "question", so "grade 9 physics questions" is NOT read as 9.
+ * Spelled-out numbers ("twenty questions") aren't caught here — the prompt
+ * tells Gemini to follow the brief when it names a different amount.
+ */
+export function resolveCount(brief: string): number {
+  const match =
+    brief.match(/\b(\d{1,2})\s*[-–—]?\s*questions?\b/i) ??
+    brief.match(/\bquestions?\b\s*(?:of|to|:|-|—|=)?\s*(\d{1,2})\b/i);
+  if (!match) return DEFAULT_COUNT;
+  const n = Number(match[1]);
+  if (!Number.isFinite(n)) return DEFAULT_COUNT;
+  return Math.min(MAX_COUNT, Math.max(1, n));
+}
 
 /* -------------------------------------------------------------- normalise */
 
@@ -229,12 +245,14 @@ Style: grade 8–12 classroom voice; SI units; every prompt self-contained (stat
 
 /** The teacher's brief, translated into instructions for one coherent set. */
 export function buildUserPrompt(req: GenerateSetRequest): string {
+  const count = resolveCount(req.brief);
   const mix =
     req.difficulty === "Mixed"
       ? "a healthy mix of Easy, Medium and Hard (at most one Boss)"
       : `${req.difficulty} throughout`;
   return [
-    `Write exactly ${req.count} questions.`,
+    `Write exactly ${count} questions.`,
+    "If the teacher's brief clearly names a different number of questions — in digits or words, like \"20 questions\" or \"twenty questions\" — that number wins and you write that many instead.",
     `Teacher's brief: ${req.brief.trim()}`,
     `Difficulty: ${mix}.`,
     `Allowed types only: ${req.types.join(", ")}. Spread them naturally across the set instead of using one type for everything.`,

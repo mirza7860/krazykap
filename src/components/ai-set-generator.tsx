@@ -4,9 +4,11 @@
  * Generate a whole question set with AI, then approve it question by
  * question before anything touches the bank.
  *
- * Step 1 "compose": set name, a brief in the AI Elements prompt box, count,
+ * Step 1 "compose": set name, a brief in the AI Elements prompt box,
  * difficulty and type chips → POST /api/generate-set (server-side key,
- * never exposed to this component). Step 2 "review": every draft arrives
+ * never exposed to this component). How many questions to write is read
+ * out of the brief itself (default 10), so there is no count control.
+ * Step 2 "review": every draft arrives
  * already validated; the teacher ticks which ones to keep, and only those
  * are inserted — as one new set/module.
  */
@@ -23,7 +25,6 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -45,8 +46,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  MAX_SET_SIZE,
-  MIN_SET_SIZE,
+  DEFAULT_COUNT,
   QUESTION_TYPES,
   QUESTION_TYPE_LABELS,
   SET_DIFFICULTIES,
@@ -60,18 +60,6 @@ import { cn } from "@/lib/utils";
 
 /** One draft as the review step holds it — approval state rides along. */
 type DraftQuestion = GeneratedQuestion & { approved: boolean };
-
-/** Topic starters under the prompt box — one click fills the brief. */
-const STARTERS = [
-  "Newton's laws & friction",
-  "Circuits & Ohm's law",
-  "Optics and lenses",
-  "Momentum & collisions",
-  "Thermodynamics",
-  "Electromagnetism",
-];
-
-const COUNT_CHOICES = [4, 5, 6, 8, 10, 12];
 
 const OPTION_LETTERS = ["A", "B", "C", "D"];
 
@@ -88,7 +76,6 @@ export function AiSetGenerator({
   const [step, setStep] = useState<"compose" | "review">("compose");
   const [setName, setSetName] = useState("");
   const [brief, setBrief] = useState("");
-  const [count, setCount] = useState(8);
   const [difficulty, setDifficulty] = useState<SetDifficulty>("Mixed");
   const [types, setTypes] = useState<QuestionType[]>([...QUESTION_TYPES]);
   const [busy, setBusy] = useState(false);
@@ -134,7 +121,7 @@ export function AiSetGenerator({
       const res = await fetch("/api/generate-set", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief: trimmed, count, difficulty, types }),
+        body: JSON.stringify({ brief: trimmed, difficulty, types }),
       });
       const payload: unknown = await res.json().catch(() => null);
       if (!res.ok) {
@@ -234,45 +221,23 @@ export function AiSetGenerator({
               </PromptInputProvider>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label>How many questions</Label>
-                <Select
-                  value={String(count)}
-                  onValueChange={(v) => setCount(Number(v ?? count))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COUNT_CHOICES.filter((n) => n >= MIN_SET_SIZE && n <= MAX_SET_SIZE).map(
-                      (n) => (
-                        <SelectItem key={n} value={String(n)}>
-                          {n} questions
-                        </SelectItem>
-                      ),
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Difficulty</Label>
-                <Select
-                  value={difficulty}
-                  onValueChange={(v) => setDifficulty((v ?? "Mixed") as SetDifficulty)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SET_DIFFICULTIES.map((d) => (
-                      <SelectItem key={d} value={d}>
-                        {d}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="grid gap-2">
+              <Label>Difficulty</Label>
+              <Select
+                value={difficulty}
+                onValueChange={(v) => setDifficulty((v ?? "Mixed") as SetDifficulty)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SET_DIFFICULTIES.map((d) => (
+                    <SelectItem key={d} value={d}>
+                      {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="grid gap-2">
@@ -352,7 +317,7 @@ export function AiSetGenerator({
                 ) : (
                   <WandSparkles className="size-4" />
                 )}
-                {busy ? "Generating…" : `Generate ${count} questions`}
+                {busy ? "Generating…" : "Generate set"}
               </Button>
             </>
           ) : (
@@ -384,8 +349,7 @@ export function AiSetGenerator({
 
 /**
  * The prompt box itself. Lives inside a PromptInputProvider so the text can
- * also be read and written from out here — the suggestion chips fill it,
- * the footer reports its state.
+ * also be read and written from out here — the footer reports its state.
  */
 function BriefPrompt({
   busy,
@@ -410,7 +374,7 @@ function BriefPrompt({
         <PromptInputTextarea
           value={textInput.value}
           onChange={(e) => onChange(e.currentTarget.value)}
-          placeholder="e.g. Ten questions on Newton's laws and friction for grade 9…"
+          placeholder={`e.g. ${DEFAULT_COUNT} questions on Newton's laws and friction for grade 9…`}
           className="min-h-20"
         />
         <PromptInputFooter className="mt-2 justify-between border-t border-border pt-2">
@@ -425,18 +389,10 @@ function BriefPrompt({
         </PromptInputFooter>
       </PromptInput>
 
-      <Suggestions>
-        {STARTERS.map((s) => (
-          <Suggestion
-            key={s}
-            suggestion={s}
-            onClick={(value) => {
-              textInput.setInput(value);
-              onChange(value);
-            }}
-          />
-        ))}
-      </Suggestions>
+      <p className="text-[11px] text-muted-foreground">
+        Defaults to {DEFAULT_COUNT} questions — name a different number in your brief (like “20
+        questions”) and the AI follows that instead.
+      </p>
 
       {busy && <GeneratingPanel compact />}
     </div>

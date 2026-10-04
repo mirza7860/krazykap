@@ -55,7 +55,6 @@ export interface GeneratedQuestion {
 /** Exactly what the dialog POSTs to /api/generate-set. */
 export interface GenerateSetRequest {
   brief: string;
-  count: number;
   difficulty: SetDifficulty;
   types: QuestionType[];
 }
@@ -66,6 +65,10 @@ export interface GenerateSetResponse {
   dropped: number;
 }
 
-/** Kept small on purpose: one call writes the whole set, 15 rpm upstream. */
-export const MIN_SET_SIZE = 3;
-export const MAX_SET_SIZE = 12;
+/**
+ * How many questions a brief that names no number asks for. A number in the
+ * brief ("20 questions…") always wins — see resolveCount() server-side.
+ * Capped so one prompt can't run the free tier out of output tokens.
+ */
+export const DEFAULT_COUNT = 10;
+export const MAX_COUNT = 50;
