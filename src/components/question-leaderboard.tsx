@@ -16,17 +16,23 @@ const MEDALS = ["🥇", "🥈", "🥉"];
  *
  * The answer is already public at this point (the teacher revealed it), so
  * showing correctness and reaction time leaks nothing new.
+ *
+ * `viewportRows` is what keeps a 40-student room from growing the screen: the
+ * list is clamped to that many rows tall and scrolls inside its own box, with
+ * no scrollbar drawn (see `no-scrollbar` in globals.css).
  */
 export function QuestionLeaderboard({
   rows,
   highlightId,
   max = 20,
   dense = false,
+  viewportRows,
 }: {
   rows: QuestionLeaderboardRow[];
   highlightId?: string;
   max?: number;
   dense?: boolean;
+  viewportRows?: number;
 }) {
   const shown = (rows ?? []).slice(0, max);
 
@@ -42,7 +48,20 @@ export function QuestionLeaderboard({
   }
 
   return (
-    <ol className="flex w-full flex-col gap-2">
+    <ol
+      className={cn(
+        "flex w-full flex-col gap-2",
+        viewportRows &&
+          "no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain",
+      )}
+      style={
+        viewportRows
+          ? {
+              maxHeight: `calc((var(--qlb-row-h) + var(--board-row-gap)) * ${viewportRows} - var(--board-row-gap))`,
+            }
+          : undefined
+      }
+    >
       {shown.map((row) => {
         const isMe = row.id === highlightId;
         const speed =

@@ -962,7 +962,13 @@ function ActiveQuestionCard({
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               This question&apos;s leaderboard
             </p>
-            <QuestionLeaderboard rows={a.question_leaderboard ?? []} max={20} />
+            {/* Fixed to ten rows with the scroll hidden inside it: a room of
+                forty answers gets read the same way as a room of four. */}
+            <QuestionLeaderboard
+              rows={a.question_leaderboard ?? []}
+              max={50}
+              viewportRows={10}
+            />
           </div>
         )}
 

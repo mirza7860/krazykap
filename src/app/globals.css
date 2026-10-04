@@ -91,6 +91,14 @@
   --chart-4: #6b5ce0;
   --chart-5: #c2559a;
   --radius: 0.75rem;
+  /* Board geometry: one non-dense leaderboard row plus the `gap-2` between
+     rows. A board's "viewport of 10" is `10 × (row + gap) − gap` tall, so a
+     row count stays a row count instead of a magic pixel number. The
+     per-question board measures two pixels taller (its subtitle carries
+     icons), so it gets its own row. */
+  --board-row-h: 66px;
+  --qlb-row-h: 68px;
+  --board-row-gap: 8px;
   --sidebar: #fbf1e7;
   --sidebar-foreground: #221812;
   --sidebar-primary: #db4a0b;
@@ -179,6 +187,17 @@
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.18em;
+}
+
+/* Scroll still works — wheel, trackpad, touch, keyboard — the bar just does
+   not render. Panels that are clamped to fit the screen read as "everything
+   fits"; a visible track creeping down the projector looks like a bug. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @keyframes pulse-ring {

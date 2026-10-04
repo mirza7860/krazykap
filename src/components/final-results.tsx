@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { Leaderboard } from "@/components/leaderboard";
+import { LeaderboardDownload } from "@/components/leaderboard-download";
 import { PodiumView } from "@/components/podium-view";
 import { fireCelebration, playCelebrationSound } from "@/lib/confetti";
 import type { LeaderboardRow } from "@/lib/types";
@@ -19,17 +20,22 @@ import type { LeaderboardRow } from "@/lib/types";
  * @param layout "stack" is the teacher's dialog — podium over leaderboard.
  * "split" puts them side by side and takes the height it is given, which is
  * what the projector wants: a poster that fills the screen with no scroll.
+ * @param leaderboardRows how many rows the leaderboard can show at once. The
+ * list is clamped to exactly that many rows tall and scrolls inside its own
+ * box beyond it, so the board never grows into the page around it.
  */
 export function FinalResults({
   leaderboard,
   celebrate = false,
   max = 10,
   layout = "stack",
+  leaderboardRows = 10,
 }: {
   leaderboard: LeaderboardRow[];
   celebrate?: boolean;
   max?: number;
   layout?: "stack" | "split";
+  leaderboardRows?: number;
 }) {
   useEffect(() => {
     if (!celebrate) return;
@@ -68,20 +74,28 @@ export function FinalResults({
         {/* `m-auto` rather than a centering utility: if the podium is ever
             taller than this column the margins collapse to zero and the top
             stays reachable instead of being clipped off a centred scroll. */}
-        <div className="flex min-h-0 flex-col overflow-y-auto">
+        <div className="no-scrollbar flex min-h-0 flex-col overflow-y-auto">
           <div className="m-auto flex w-full justify-center">
             <PodiumView leaderboard={leaderboard} />
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
-          {/* `m-auto` centres a short list but collapses to zero the moment a
-              long one overflows, so the top row is always reachable. */}
-          <div className="m-auto w-full">
-            <p className="mb-2 text-xs font-bold tracking-widest text-muted-foreground uppercase">
+        {/* No scroll on this column: the list below takes the height it is
+            given, clamps itself to `leaderboardRows` and scrolls on its own —
+            so the column is either exactly full or has room to spare. */}
+        <div className="flex min-h-0 flex-1 flex-col pr-1">
+          <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-bold tracking-widest text-muted-foreground uppercase">
               Leaderboard
             </p>
-            <Leaderboard rows={leaderboard} max={max} />
+            <LeaderboardDownload rows={leaderboard} max={max} />
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <Leaderboard
+              rows={leaderboard}
+              max={max}
+              viewportRows={leaderboardRows}
+            />
           </div>
         </div>
       </div>
@@ -102,10 +116,17 @@ export function FinalResults({
       <PodiumView leaderboard={leaderboard} />
 
       <div>
-        <p className="mb-2 text-xs font-bold tracking-widest text-muted-foreground uppercase">
-          Leaderboard
-        </p>
-        <Leaderboard rows={leaderboard} max={max} />
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-bold tracking-widest text-muted-foreground uppercase">
+            Leaderboard
+          </p>
+          <LeaderboardDownload rows={leaderboard} max={max} />
+        </div>
+        <Leaderboard
+          rows={leaderboard}
+          max={max}
+          viewportRows={leaderboardRows}
+        />
       </div>
     </div>
   );

@@ -4,58 +4,12 @@ import { useRef } from "react";
 import type { LeaderboardRow } from "@/lib/types";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { downloadCanvas, loadImage, roundedRectPath } from "@/lib/canvas";
 
 /** Matches `rounded-3xl` on the on-screen podium container. */
 const PNG_RADIUS = 24;
 /** Matches `rounded-t-2xl` on the on-screen podium steps. */
 const STEP_RADIUS = 16;
-
-function roundedRectPath(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  radii: number | [number, number, number, number],
-): void {
-  ctx.beginPath();
-  const anyCtx = ctx as CanvasRenderingContext2D & {
-    roundRect?: (
-      x: number,
-      y: number,
-      w: number,
-      h: number,
-      r: number | number[],
-    ) => void;
-  };
-  if (typeof anyCtx.roundRect === "function") {
-    anyCtx.roundRect(x, y, w, h, radii as number[]);
-    return;
-  }
-  const [tl, tr, br, bl] =
-    typeof radii === "number"
-      ? [radii, radii, radii, radii]
-      : radii;
-  ctx.moveTo(x, y + h);
-  ctx.lineTo(x, y + tl);
-  ctx.arcTo(x, y, x + tl, y, tl);
-  ctx.lineTo(x + w - tr, y);
-  ctx.arcTo(x + w, y, x + w, y + tr, tr);
-  ctx.lineTo(x + w, y + h - br);
-  ctx.arcTo(x + w, y + h, x + w - br, y + h, br);
-  ctx.lineTo(x + bl, y + h);
-  ctx.arcTo(x, y + h, x, y + h - bl, bl);
-  ctx.closePath();
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`failed to load ${src}`));
-    img.src = src;
-  });
-}
 
 export function PodiumView({ leaderboard }: { leaderboard: LeaderboardRow[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -160,12 +114,8 @@ export function PodiumView({ leaderboard }: { leaderboard: LeaderboardRow[] }) {
     drawPodium(first, baseX, 170, "#eab308", "1", "🥇");
     drawPodium(third, baseX + stepWidth + 15, 80, "#b45309", "3", "🥉");
 
-    const link = document.createElement("a");
-    link.download = "top_3_champions.png";
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+    downloadCanvas(canvas, "top_3_champions.png");
   };
-
   return (
     <div className="flex w-full flex-col items-center gap-4">
       <div

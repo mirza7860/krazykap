@@ -8,6 +8,12 @@ const MEDALS = ["🥇", "🥈", "🥉"];
 /**
  * Leaderboard with mode switching (PRD §12) — multiple categories so the
  * same high performer doesn't sweep every board.
+ *
+ * `viewportRows` clamps the list to a fixed number of rows: it grows no
+ * taller than that, scrolls inside itself when there are more rows, and never
+ * adds height to the page around it. `flex-1 min-h-0` lets it shrink to
+ * whatever room it is actually given, so a tall column shows ten rows and a
+ * short one simply shows fewer — the container above never has to scroll.
  */
 export function Leaderboard({
   rows,
@@ -15,12 +21,14 @@ export function Leaderboard({
   highlightId,
   dense = false,
   max = 10,
+  viewportRows,
 }: {
   rows: LeaderboardRow[];
   mode?: string;
   highlightId?: string;
   dense?: boolean;
   max?: number;
+  viewportRows?: number;
 }) {
   const shown = rows.slice(0, max);
 
@@ -36,7 +44,20 @@ export function Leaderboard({
   }
 
   return (
-    <ol className="flex w-full flex-col gap-2">
+    <ol
+      className={cn(
+        "flex w-full flex-col gap-2",
+        viewportRows &&
+          "no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain",
+      )}
+      style={
+        viewportRows
+          ? {
+              maxHeight: `calc((var(--board-row-h) + var(--board-row-gap)) * ${viewportRows} - var(--board-row-gap))`,
+            }
+          : undefined
+      }
+    >
       {shown.map((row) => {
         const isMe = row.id === highlightId;
         const value =

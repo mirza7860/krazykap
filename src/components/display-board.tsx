@@ -138,8 +138,9 @@ function Shell({ code, children }: { code: string; children: React.ReactNode }) 
       </header>
       {/* Every state renders inside this box, so it owns the leftover height.
           Below `lg` the columns stack and there is genuinely more content than
-          room — there the box scrolls so nothing is ever clipped. */}
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto lg:overflow-hidden">
+          room — there the box scrolls so nothing is ever clipped, but the bar
+          itself stays off: a projector should never show a scrollbar. */}
+      <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto lg:overflow-hidden">
         {children}
       </div>
     </div>
@@ -237,7 +238,7 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
             That pairing — full width plus side by side — is what keeps a
             1080p projector on a single screen. The column scrolls itself if a
             question is ever longer than the room allows. */}
-        <section className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto">
+        <section className="no-scrollbar flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto">
           {a ? (
             <>
               <div className="flex flex-1 flex-col justify-center rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
@@ -410,14 +411,21 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
           )}
         </section>
 
-        <aside className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto">
+        <aside className="no-scrollbar flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto">
           <div className="flex min-h-[210px] flex-1 flex-col rounded-3xl border border-border bg-card p-5">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-heading text-lg font-bold">This question</h3>
             </div>
+            {/* Fixed to ten rows and scrolling inside itself: forty students
+                on the board change nothing about how much screen this card
+                takes. */}
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
               {a?.state === "leaderboard" ? (
-                <QuestionLeaderboard rows={a.question_leaderboard ?? []} max={50} />
+                <QuestionLeaderboard
+                  rows={a.question_leaderboard ?? []}
+                  max={50}
+                  viewportRows={10}
+                />
               ) : (
                 <div className="grid flex-1 place-items-center rounded-2xl border border-dashed border-border px-4 py-10 text-center">
                   <div>
@@ -437,16 +445,22 @@ function Board({ state, code }: { state: TeacherState; code: string }) {
               In the room
             </p>
             <p className="font-display mt-1 text-4xl font-extrabold">{total}</p>
-            <div className="mt-3 flex max-h-[180px] flex-wrap gap-1.5 overflow-y-auto pr-1">
-              {state.participants.map((p) => (
-                <span
-                  key={p.id}
-                  className="rounded-lg bg-muted px-2 py-1 text-xs font-medium"
-                >
-                  {p.nickname}
-                </span>
-              ))}
-            </div>
+            {/* While the standings are up, the names live ON the board — so
+                this card keeps only the count and hands its height to the
+                standings. Forty chips used to squeeze the board down to a
+                single visible row on a short projector. */}
+            {a?.state !== "leaderboard" && (
+              <div className="no-scrollbar mt-3 flex max-h-[180px] flex-wrap gap-1.5 overflow-y-auto pr-1">
+                {state.participants.map((p) => (
+                  <span
+                    key={p.id}
+                    className="rounded-lg bg-muted px-2 py-1 text-xs font-medium"
+                  >
+                    {p.nickname}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </aside>
       </main>
